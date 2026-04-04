@@ -1,5 +1,6 @@
 package com.roze.api;
 
+import com.roze.model.BrowserActivity;
 import com.roze.repository.SessionRepository;
 import com.roze.service.StatsService;
 import lombok.RequiredArgsConstructor;
@@ -47,5 +48,42 @@ public class StatsController {
         }
         
         return repository.getTopApps(from, to, limit);
+    }
+
+    // Add these endpoints to StatsController.java
+
+    @GetMapping("/top-websites")
+    public List<Map<String, Object>> getTopWebsites(
+            @RequestParam(defaultValue = "10") int limit,
+            @RequestParam(required = false) String date) {
+
+        long from, to;
+
+        if (date != null) {
+            LocalDate localDate = LocalDate.parse(date);
+            from = localDate.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli();
+            to = localDate.plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli();
+        } else {
+            from = LocalDate.now().atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli();
+            to = Instant.now().toEpochMilli();
+        }
+
+        return repository.getTopWebsites(from, to, limit);
+    }
+
+    @GetMapping("/browser-activities")
+    public List<BrowserActivity> getBrowserActivities(@RequestParam(required = false) String date) {
+        long from, to;
+
+        if (date != null) {
+            LocalDate localDate = LocalDate.parse(date);
+            from = localDate.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli();
+            to = localDate.plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli();
+        } else {
+            from = LocalDate.now().atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli();
+            to = Instant.now().toEpochMilli();
+        }
+
+        return repository.getBrowserActivities(from, to);
     }
 }

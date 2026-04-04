@@ -30,3 +30,18 @@ CREATE TABLE IF NOT EXISTS screenshots (
 CREATE INDEX IF NOT EXISTS idx_activity_start ON activity_sessions(start_time);
 CREATE INDEX IF NOT EXISTS idx_afk_start ON afk_sessions(start_time);
 CREATE INDEX IF NOT EXISTS idx_screenshots_timestamp ON screenshots(timestamp);
+
+-- Browser Activities Table
+CREATE TABLE IF NOT EXISTS browser_activities (
+                                                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                                  browser_name TEXT NOT NULL,
+                                                  url TEXT,
+                                                  page_title TEXT,
+                                                  start_time INTEGER NOT NULL,
+                                                  end_time INTEGER NOT NULL,
+                                                  duration_ms INTEGER NOT NULL
+);
+
+-- Indexes for browser activities
+CREATE INDEX IF NOT EXISTS idx_browser_start ON browser_activities(start_time);
+CREATE INDEX IF NOT EXISTS idx_browser_url ON browser_activities(url);
