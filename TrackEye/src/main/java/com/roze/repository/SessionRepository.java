@@ -3,6 +3,7 @@ package com.roze.repository;
 import com.roze.config.AppConfig;
 import com.roze.model.ActivitySession;
 import com.roze.model.AfkSession;
+import com.roze.model.BrowserActivity;
 import com.roze.model.ScreenshotRecord;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
@@ -29,11 +30,11 @@ public class SessionRepository {
             if (!dbDir.exists()) {
                 dbDir.mkdirs();
             }
-            
+
             String dbUrl = "jdbc:sqlite:" + config.getStoragePath() + "/trackeye.db";
             connection = DriverManager.getConnection(dbUrl);
             connection.setAutoCommit(true);
-            
+
             createTables();
             log.info("Database initialized at: {}", dbUrl);
         } catch (SQLException e) {
@@ -55,7 +56,7 @@ public class SessionRepository {
                     duration_ms INTEGER NOT NULL
                 )
             """);
-            
+
             // AFK sessions
             stmt.execute("""
                 CREATE TABLE IF NOT EXISTS afk_sessions (
@@ -65,7 +66,7 @@ public class SessionRepository {
                     duration_ms INTEGER NOT NULL
                 )
             """);
-            
+
             // Screenshots
             stmt.execute("""
                 CREATE TABLE IF NOT EXISTS screenshots (
@@ -76,11 +77,28 @@ public class SessionRepository {
                     process_name TEXT
                 )
             """);
-            
+
+            // Browser Activities Table - ADD THIS!
+            stmt.execute("""
+                CREATE TABLE IF NOT EXISTS browser_activities (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    browser_name TEXT NOT NULL,
+                    url TEXT,
+                    page_title TEXT,
+                    start_time INTEGER NOT NULL,
+                    end_time INTEGER NOT NULL,
+                    duration_ms INTEGER NOT NULL
+                )
+            """);
+
             // Create indexes
             stmt.execute("CREATE INDEX IF NOT EXISTS idx_activity_start ON activity_sessions(start_time)");
             stmt.execute("CREATE INDEX IF NOT EXISTS idx_afk_start ON afk_sessions(start_time)");
             stmt.execute("CREATE INDEX IF NOT EXISTS idx_screenshots_time ON screenshots(timestamp)");
+            stmt.execute("CREATE INDEX IF NOT EXISTS idx_browser_start ON browser_activities(start_time)");
+            stmt.execute("CREATE INDEX IF NOT EXISTS idx_browser_url ON browser_activities(url)");
+
+            log.info("All tables created/verified successfully");
         }
     }
 
@@ -127,21 +145,21 @@ public class SessionRepository {
     public List<ActivitySession> getActivitySessions(long fromTime, long toTime) {
         List<ActivitySession> sessions = new ArrayList<>();
         String sql = "SELECT * FROM activity_sessions WHERE start_time >= ? AND start_time <= ? ORDER BY start_time DESC";
-        
+
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             ps.setLong(1, fromTime);
             ps.setLong(2, toTime);
             ResultSet rs = ps.executeQuery();
-            
+
             while (rs.next()) {
                 sessions.add(new ActivitySession(
-                    rs.getLong("id"),
-                    rs.getString("app_name"),
-                    rs.getString("window_title"),
-                    rs.getString("process_name"),
-                    rs.getLong("start_time"),
-                    rs.getLong("end_time"),
-                    rs.getLong("duration_ms")
+                        rs.getLong("id"),
+                        rs.getString("app_name"),
+                        rs.getString("window_title"),
+                        rs.getString("process_name"),
+                        rs.getLong("start_time"),
+                        rs.getLong("end_time"),
+                        rs.getLong("duration_ms")
                 ));
             }
         } catch (SQLException e) {
@@ -160,13 +178,13 @@ public class SessionRepository {
             ORDER BY total_ms DESC
             LIMIT ?
         """;
-        
+
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             ps.setLong(1, fromTime);
             ps.setLong(2, toTime);
             ps.setInt(3, limit);
             ResultSet rs = ps.executeQuery();
-            
+
             while (rs.next()) {
                 Map<String, Object> app = new LinkedHashMap<>();
                 app.put("appName", rs.getString("app_name"));
@@ -198,25 +216,98 @@ public class SessionRepository {
     public List<ScreenshotRecord> getScreenshots(long fromTime, long toTime) {
         List<ScreenshotRecord> screenshots = new ArrayList<>();
         String sql = "SELECT * FROM screenshots WHERE timestamp >= ? AND timestamp <= ? ORDER BY timestamp DESC";
-        
+
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             ps.setLong(1, fromTime);
             ps.setLong(2, toTime);
             ResultSet rs = ps.executeQuery();
-            
+
             while (rs.next()) {
                 screenshots.add(new ScreenshotRecord(
-                    rs.getLong("id"),
-                    rs.getLong("timestamp"),
-                    rs.getString("file_path"),
-                    rs.getString("window_title"),
-                    rs.getString("process_name")
+                        rs.getLong("id"),
+                        rs.getLong("timestamp"),
+                        rs.getString("file_path"),
+                        rs.getString("window_title"),
+                        rs.getString("process_name")
                 ));
             }
         } catch (SQLException e) {
             log.error("Failed to get screenshots", e);
         }
         return screenshots;
+    }
+
+    // Browser Activities Methods
+    public void saveBrowserActivity(BrowserActivity activity) {
+        String sql = "INSERT INTO browser_activities (browser_name, url, page_title, start_time, end_time, duration_ms) VALUES (?, ?, ?, ?, ?, ?)";
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setString(1, activity.getBrowserName());
+            ps.setString(2, activity.getUrl());
+            ps.setString(3, activity.getPageTitle());
+            ps.setLong(4, activity.getStartTime());
+            ps.setLong(5, activity.getEndTime());
+            ps.setLong(6, activity.getDurationMs());
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            log.error("Failed to save browser activity", e);
+        }
+    }
+
+    public List<BrowserActivity> getBrowserActivities(long fromTime, long toTime) {
+        List<BrowserActivity> activities = new ArrayList<>();
+        String sql = "SELECT * FROM browser_activities WHERE start_time >= ? AND start_time <= ? ORDER BY start_time DESC";
+
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setLong(1, fromTime);
+            ps.setLong(2, toTime);
+            ResultSet rs = ps.executeQuery();
+
+            while (rs.next()) {
+                activities.add(new BrowserActivity(
+                        rs.getLong("id"),
+                        rs.getString("browser_name"),
+                        rs.getString("url"),
+                        rs.getString("page_title"),
+                        rs.getLong("start_time"),
+                        rs.getLong("end_time"),
+                        rs.getLong("duration_ms")
+                ));
+            }
+        } catch (SQLException e) {
+            log.error("Failed to get browser activities", e);
+        }
+        return activities;
+    }
+
+    public List<Map<String, Object>> getTopWebsites(long fromTime, long toTime, int limit) {
+        List<Map<String, Object>> topSites = new ArrayList<>();
+        String sql = """
+            SELECT url, COUNT(*) as visit_count, SUM(duration_ms) as total_ms
+            FROM browser_activities
+            WHERE start_time >= ? AND start_time <= ? AND url != '' AND url IS NOT NULL
+            GROUP BY url
+            ORDER BY total_ms DESC
+            LIMIT ?
+        """;
+
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setLong(1, fromTime);
+            ps.setLong(2, toTime);
+            ps.setInt(3, limit);
+            ResultSet rs = ps.executeQuery();
+
+            while (rs.next()) {
+                Map<String, Object> site = new LinkedHashMap<>();
+                site.put("url", rs.getString("url"));
+                site.put("visitCount", rs.getInt("visit_count"));
+                site.put("totalMs", rs.getLong("total_ms"));
+                site.put("totalMinutes", rs.getLong("total_ms") / 60000);
+                topSites.add(site);
+            }
+        } catch (SQLException e) {
+            log.error("Failed to get top websites", e);
+        }
+        return topSites;
     }
 
     @PreDestroy

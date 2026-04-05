@@ -46,5 +46,21 @@ export interface ScreenshotRecord {
     windowTitle: string;
     processName: string;
 }
+// New interfaces for browser tracking
+export interface BrowserActivity {
+    id: number;
+    browserName: string;
+    url: string;
+    pageTitle: string;
+    startTime: number;
+    endTime: number;
+    durationMs: number;
+}
 
+export interface TopWebsite {
+    url: string;
+    visitCount: number;
+    totalMs: number;
+    totalMinutes: number;
+}
 export default api;
