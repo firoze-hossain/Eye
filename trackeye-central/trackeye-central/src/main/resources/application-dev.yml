@@ -1,7 +1,72 @@
+## src/main/resources/application-dev.yml
+#spring:
+#  datasource:
+##    url: jdbc:h2:file:./data/trackeye_db;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+#    url: jdbc:h2:file:./data/trackeye_db;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;INIT=CREATE SCHEMA IF NOT EXISTS PUBLIC
+#    username: sa
+#    password:
+#    driver-class-name: org.h2.Driver
+#
+#  h2:
+#    console:
+#      enabled: true
+#      path: /h2-console
+#
+#  jpa:
+#    database-platform: org.hibernate.dialect.H2Dialect
+#    hibernate:
+#      ddl-auto: update
+#    show-sql: true
+#    properties:
+#      hibernate:
+#        format_sql: true
+#  web:
+#    error:
+#      include-message: always
+#      include-binding-errors: always
+#
+#server:
+#  port: 8080
+#
+## File storage for screenshots (local for development)
+#trackeye:
+#  storage:
+#    screenshots: ./data/screenshots
+#    max-file-size: 10MB
+#    allowed-formats: jpg,jpeg,png
+#
+#  security:
+#    api-key-header: X-API-Key
+#    device-id-header: X-Device-ID
+#    api-key-validity-days: 365
+#    jwt-secret: ${JWT_SECRET:trackeyeDevSecretKey2024ForDevelopmentOnly}
+#    encryption-key: ${ENCRYPTION_KEY:TrackEyeEncryptionKey2024!}
+#
+#  rate-limiting:
+#    enabled: true
+#    requests-per-minute: 60
+#    burst-capacity: 100
+#
+#  registration:
+#    require-approval: false
+#    default-role: employee
+#    invite-expiry-hours: 48
+#
+#logging:
+#  level:
+#    com.trackeye: DEBUG
+#    org.springframework.security: DEBUG
+#  pattern:
+#    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+#
+## For development - use local IP
+#app:
+#  base-url: http://localhost:8080
+#  frontend-url: http://localhost:3000
+
 # src/main/resources/application-dev.yml
 spring:
   datasource:
-#    url: jdbc:h2:file:./data/trackeye_db;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
     url: jdbc:h2:file:./data/trackeye_db;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;INIT=CREATE SCHEMA IF NOT EXISTS PUBLIC
     username: sa
     password:
@@ -20,10 +85,9 @@ spring:
     properties:
       hibernate:
         format_sql: true
-  web:
-    error:
-      include-message: always
-      include-binding-errors: always
+
+  mvc:
+    throw-exception-if-no-handler-found: true
 
 server:
   port: 8080
@@ -36,6 +100,7 @@ trackeye:
     allowed-formats: jpg,jpeg,png
 
   security:
+    enabled: false  # IMPORTANT: Disable security for development
     api-key-header: X-API-Key
     device-id-header: X-Device-ID
     api-key-validity-days: 365
@@ -43,9 +108,7 @@ trackeye:
     encryption-key: ${ENCRYPTION_KEY:TrackEyeEncryptionKey2024!}
 
   rate-limiting:
-    enabled: true
-    requests-per-minute: 60
-    burst-capacity: 100
+    enabled: false  # Disable rate limiting for development
 
   registration:
     require-approval: false
@@ -54,7 +117,8 @@ trackeye:
 
 logging:
   level:
-    com.trackeye: DEBUG
+    com.roze.trackeyecentral: DEBUG
+    org.springframework.web: DEBUG
     org.springframework.security: DEBUG
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"

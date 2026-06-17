@@ -9,9 +9,10 @@
         --foreground: 222.2 84% 4.9%;
     }
 
-    * {
+    /* Remove this line - it's causing the error */
+    /* * {
         @apply border-border;
-    }
+    } */
 
     body {
         @apply bg-dark-50 text-dark-900;
