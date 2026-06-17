@@ -1,7 +1,8 @@
 // src/components/common/Header.tsx
 'use client';
 
-import { useAuth } from '@/context/AuthContext';
+//import { useAuth } from '@/context/AuthContext';
+import {useAuth} from '../../context/AuthContext'
 import { Menu, Bell, User, LogOut } from 'lucide-react';
 import { useState } from 'react';
 import Image from 'next/image';

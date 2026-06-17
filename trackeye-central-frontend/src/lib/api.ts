@@ -13,24 +13,32 @@ class ApiClient {
             },
         });
 
-        // Request interceptor to add auth token
+        // Log all requests for debugging
         this.api.interceptors.request.use(
             async (config) => {
+                console.log(`🚀 [API Request] ${config.method?.toUpperCase()} ${config.url}`);
+                console.log('📦 Request data:', config.data);
+
                 const session = await getSession();
                 if (session?.accessToken) {
                     config.headers.Authorization = `Bearer ${session.accessToken}`;
                 }
                 return config;
             },
-            (error) => Promise.reject(error)
+            (error) => {
+                console.error('❌ [API Request Error]', error);
+                return Promise.reject(error);
+            }
         );
 
-        // Response interceptor for error handling
         this.api.interceptors.response.use(
-            (response) => response,
+            (response) => {
+                console.log(`✅ [API Response] ${response.config.url}`, response.data);
+                return response;
+            },
             (error) => {
+                console.error('❌ [API Response Error]', error.response?.data || error.message);
                 if (error.response?.status === 401) {
-                    // Redirect to login
                     window.location.href = '/login';
                 }
                 return Promise.reject(error);
@@ -61,35 +69,43 @@ class ApiClient {
 
 export const apiClient = new ApiClient();
 
-// API endpoints
+// API endpoints - use /api/backend prefix for backend calls
 export const API = {
+    // Auth endpoints are handled by NextAuth, NOT backend
     auth: {
         login: '/api/auth/login',
         logout: '/api/auth/logout',
         me: '/api/auth/me',
     },
+    // Backend endpoints - use /api/backend prefix
+    public: {
+        register: '/api/backend/public/register',
+        registerDevice: '/api/backend/public/register-device',
+        health: '/api/backend/public/health',
+        verifyInvite: (token: string) => `/api/backend/public/verify-invite?token=${token}`,
+    },
     dashboard: {
-        stats: '/api/admin/dashboard',
-        live: '/api/admin/live',
+        stats: '/api/backend/admin/dashboard',
+        live: '/api/backend/admin/live',
     },
     employees: {
-        list: '/api/admin/employees',
-        details: (id: number) => `/api/admin/employees/${id}`,
-        activities: (id: number, date: string) => `/api/admin/employees/${id}/activities?date=${date}`,
-        screenshots: (id: number, date: string) => `/api/admin/employees/${id}/screenshots?date=${date}`,
-        deactivate: (id: number) => `/api/admin/employees/${id}/deactivate`,
-        activate: (id: number) => `/api/admin/employees/${id}/activate`,
-        invite: '/api/admin/invite',
+        list: '/api/backend/admin/employees',
+        details: (id: number) => `/api/backend/admin/employees/${id}`,
+        activities: (id: number, date: string) => `/api/backend/admin/employees/${id}/activities?date=${date}`,
+        screenshots: (id: number, date: string) => `/api/backend/admin/employees/${id}/screenshots?date=${date}`,
+        deactivate: (id: number) => `/api/backend/admin/employees/${id}/deactivate`,
+        activate: (id: number) => `/api/backend/admin/employees/${id}/activate`,
+        invite: '/api/backend/admin/invite',
     },
     reports: {
-        weekly: (userId?: number) => `/api/admin/reports/weekly${userId ? `?userId=${userId}` : ''}`,
+        weekly: (userId?: number) => `/api/backend/admin/reports/weekly${userId ? `?userId=${userId}` : ''}`,
     },
     devices: {
-        revoke: (deviceId: number) => `/api/admin/devices/${deviceId}/revoke`,
+        revoke: (deviceId: number) => `/api/backend/admin/devices/${deviceId}/revoke`,
     },
     screenshots: {
-        image: (path: string) => `/api/screenshots/image?path=${encodeURIComponent(path)}`,
+        image: (path: string) => `/api/backend/screenshots/image?path=${encodeURIComponent(path)}`,
         organization: (date: string, page: number, size: number) =>
-            `/api/screenshots/organization?date=${date}&page=${page}&size=${size}`,
+            `/api/backend/screenshots/organization?date=${date}&page=${page}&size=${size}`,
     },
 };

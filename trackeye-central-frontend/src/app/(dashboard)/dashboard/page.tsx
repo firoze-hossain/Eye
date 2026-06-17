@@ -3,14 +3,17 @@
 
 import { useEffect, useState } from 'react';
 import { useQuery } from 'react-query';
-import { API, apiClient } from '@/lib/api';
-import { DashboardStats } from '@/types';
-import StatsCards from '@/components/dashboard/StatsCards';
-import ActivityChart from '@/components/dashboard/ActivityChart';
-import TopAppsTable from '@/components/dashboard/TopAppsTable';
-import OnlineUsersList from '@/components/dashboard/OnlineUsersList';
-import ProductivityGauge from '@/components/dashboard/ProductivityGauge';
-import LoadingSpinner from '@/components/common/LoadingSpinner';
+//import { API, apiClient } from '@/lib/api';
+import {API,apiClient} from "../../../lib/api";
+//import { DashboardStats } from '@/types';
+import {DashboardStats} from "../../../types";
+//import StatsCards from '@/components/dashboard/StatsCards';
+import StatsCards from "../../../components/dashboard/StatsCards";
+import ActivityChart from '../../../components/dashboard/ActivityChart';
+import TopAppsTable from '../../../components/dashboard/TopAppsTable';
+import OnlineUsersList from '../../../components/dashboard/OnlineUsersList';
+import ProductivityGauge from '../../../components/dashboard/ProductivityGauge';
+import LoadingSpinner from '../../../components/common/LoadingSpinner';
 import toast from 'react-hot-toast';
 
 export default function DashboardPage() {
