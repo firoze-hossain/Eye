@@ -1,7 +1,72 @@
+### src/main/resources/application-dev.yml
+##spring:
+##  datasource:
+###    url: jdbc:h2:file:./data/trackeye_db;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+##    url: jdbc:h2:file:./data/trackeye_db;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;INIT=CREATE SCHEMA IF NOT EXISTS PUBLIC
+##    username: sa
+##    password:
+##    driver-class-name: org.h2.Driver
+##
+##  h2:
+##    console:
+##      enabled: true
+##      path: /h2-console
+##
+##  jpa:
+##    database-platform: org.hibernate.dialect.H2Dialect
+##    hibernate:
+##      ddl-auto: update
+##    show-sql: true
+##    properties:
+##      hibernate:
+##        format_sql: true
+##  web:
+##    error:
+##      include-message: always
+##      include-binding-errors: always
+##
+##server:
+##  port: 8080
+##
+### File storage for screenshots (local for development)
+##trackeye:
+##  storage:
+##    screenshots: ./data/screenshots
+##    max-file-size: 10MB
+##    allowed-formats: jpg,jpeg,png
+##
+##  security:
+##    api-key-header: X-API-Key
+##    device-id-header: X-Device-ID
+##    api-key-validity-days: 365
+##    jwt-secret: ${JWT_SECRET:trackeyeDevSecretKey2024ForDevelopmentOnly}
+##    encryption-key: ${ENCRYPTION_KEY:TrackEyeEncryptionKey2024!}
+##
+##  rate-limiting:
+##    enabled: true
+##    requests-per-minute: 60
+##    burst-capacity: 100
+##
+##  registration:
+##    require-approval: false
+##    default-role: employee
+##    invite-expiry-hours: 48
+##
+##logging:
+##  level:
+##    com.trackeye: DEBUG
+##    org.springframework.security: DEBUG
+##  pattern:
+##    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+##
+### For development - use local IP
+##app:
+##  base-url: http://localhost:8080
+##  frontend-url: http://localhost:3000
+#
 ## src/main/resources/application-dev.yml
 #spring:
 #  datasource:
-##    url: jdbc:h2:file:./data/trackeye_db;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
 #    url: jdbc:h2:file:./data/trackeye_db;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;INIT=CREATE SCHEMA IF NOT EXISTS PUBLIC
 #    username: sa
 #    password:
@@ -20,10 +85,9 @@
 #    properties:
 #      hibernate:
 #        format_sql: true
-#  web:
-#    error:
-#      include-message: always
-#      include-binding-errors: always
+#
+#  mvc:
+#    throw-exception-if-no-handler-found: true
 #
 #server:
 #  port: 8080
@@ -36,6 +100,7 @@
 #    allowed-formats: jpg,jpeg,png
 #
 #  security:
+#    enabled: false  # IMPORTANT: Disable security for development
 #    api-key-header: X-API-Key
 #    device-id-header: X-Device-ID
 #    api-key-validity-days: 365
@@ -43,9 +108,7 @@
 #    encryption-key: ${ENCRYPTION_KEY:TrackEyeEncryptionKey2024!}
 #
 #  rate-limiting:
-#    enabled: true
-#    requests-per-minute: 60
-#    burst-capacity: 100
+#    enabled: false  # Disable rate limiting for development
 #
 #  registration:
 #    require-approval: false
@@ -54,7 +117,8 @@
 #
 #logging:
 #  level:
-#    com.trackeye: DEBUG
+#    com.roze.trackeyecentral: DEBUG
+#    org.springframework.web: DEBUG
 #    org.springframework.security: DEBUG
 #  pattern:
 #    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
@@ -65,6 +129,7 @@
 #  frontend-url: http://localhost:3000
 
 # src/main/resources/application-dev.yml
+# Local / LAN development profile.
 spring:
   datasource:
     url: jdbc:h2:file:./data/trackeye_db;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;INIT=CREATE SCHEMA IF NOT EXISTS PUBLIC
@@ -76,23 +141,34 @@ spring:
     console:
       enabled: true
       path: /h2-console
+      # allow reaching the console from other machines on the LAN while testing
+      settings:
+        web-allow-others: true
 
   jpa:
     database-platform: org.hibernate.dialect.H2Dialect
     hibernate:
+      # In DEV, let Hibernate build the schema from the @Entity classes.
       ddl-auto: update
-    show-sql: true
-    properties:
-      hibernate:
-        format_sql: true
+    show-sql: false
+    open-in-view: false
+
+  # IMPORTANT: Flyway is disabled in dev because the V1 migration is written for
+  # PostgreSQL/production. In dev, Hibernate (ddl-auto: update) creates the tables.
+  # Flyway stays ON in the prod profile.
+  flyway:
+    enabled: false
 
   mvc:
     throw-exception-if-no-handler-found: true
 
 server:
   port: 8080
+  # Bind to all interfaces so employee PCs on your LAN can reach the server at
+  # http://<this-server-ip>:8080
+  address: 0.0.0.0
 
-# File storage for screenshots (local for development)
+# File storage for screenshots
 trackeye:
   storage:
     screenshots: ./data/screenshots
@@ -100,15 +176,20 @@ trackeye:
     allowed-formats: jpg,jpeg,png
 
   security:
-    enabled: false  # IMPORTANT: Disable security for development
+    # These filters now always enforce auth on their own paths, so this flag is
+    # informational. Keep real secrets out of source control via env vars.
+    enabled: true
     api-key-header: X-API-Key
     device-id-header: X-Device-ID
     api-key-validity-days: 365
-    jwt-secret: ${JWT_SECRET:trackeyeDevSecretKey2024ForDevelopmentOnly}
-    encryption-key: ${ENCRYPTION_KEY:TrackEyeEncryptionKey2024!}
+    jwt-secret: ${JWT_SECRET:dev-only-change-this-to-a-long-random-string}
+    encryption-key: ${ENCRYPTION_KEY:dev-only-encryption-key-change-me}
+    token-validity-hours: 12
 
   rate-limiting:
-    enabled: false  # Disable rate limiting for development
+    enabled: true
+    requests-per-minute: 600
+    burst-capacity: 1000
 
   registration:
     require-approval: false
@@ -118,12 +199,12 @@ trackeye:
 logging:
   level:
     com.roze.trackeyecentral: DEBUG
-    org.springframework.web: DEBUG
-    org.springframework.security: DEBUG
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
 
-# For development - use local IP
 app:
   base-url: http://localhost:8080
-  frontend-url: http://localhost:3000
+  # Origins allowed to call the API from a browser (the Next.js dashboard).
+  # Add your LAN address here too, comma-separated, e.g.
+  #   http://localhost:3000,http://192.168.1.50:3000
+  frontend-origins: http://localhost:3000
