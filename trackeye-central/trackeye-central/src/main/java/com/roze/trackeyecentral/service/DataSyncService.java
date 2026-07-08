@@ -85,13 +85,22 @@ public class DataSyncService {
             String fileName = String.format("%d_%s_%s.jpg",
                     timestamp, deviceId, UUID.randomUUID().toString().substring(0, 8));
 
-            Path storageDir = Paths.get(screenshotStoragePath, dateDir);
+            // FIX: resolve to an ABSOLUTE path. MultipartFile.transferTo() resolves a
+            // RELATIVE target against the servlet container's temp dir (the
+            // /private/var/folders/.../T/tomcat... path seen in the logs), NOT the app
+            // working dir - so it wrote where no directory existed -> FileNotFoundException.
+            Path storageDir = Paths.get(screenshotStoragePath, dateDir)
+                    .toAbsolutePath()
+                    .normalize();
             Files.createDirectories(storageDir);
 
             Path filePath = storageDir.resolve(fileName);
 
-            // Save file
-            file.transferTo(filePath.toFile());
+            // Write via the stream to a concrete absolute path (sidesteps transferTo's
+            // relative-path-vs-temp-dir behaviour entirely).
+            try (var in = file.getInputStream()) {
+                Files.copy(in, filePath, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            }
 
             // Calculate file hash for deduplication
             String fileHash = calculateFileHash(file.getBytes());

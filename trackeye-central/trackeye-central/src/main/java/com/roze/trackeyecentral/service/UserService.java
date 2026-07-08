@@ -59,6 +59,10 @@ public class UserService {
         if (existingDevice != null) {
             // Reactivate existing device
             existingDevice.setIsActive(true);
+            // FIX: rebind the device to the user whose registration token was presented.
+            // Without this, a machine that was ever registered to another user/org stays
+            // owned by the OLD user forever, so all synced data lands in the wrong org.
+            existingDevice.setUserId(userId);
             existingDevice.setDeviceName(request.getDeviceName());
             existingDevice.setOsType(request.getOsType());
             existingDevice.setLastSeenAt(Instant.now().toEpochMilli());

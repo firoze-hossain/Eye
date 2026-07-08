@@ -162,6 +162,15 @@ spring:
   mvc:
     throw-exception-if-no-handler-found: true
 
+  # Screenshot uploads are multipart. Spring's DEFAULT cap is 1MB, and a
+  # full-screen Retina JPEG is 2-5MB, so every upload was rejected before this.
+  # NOTE: trackeye.storage.max-file-size does NOT control this - only these do.
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 25MB
+      max-request-size: 30MB
+
 server:
   port: 8080
   # Bind to all interfaces so employee PCs on your LAN can reach the server at

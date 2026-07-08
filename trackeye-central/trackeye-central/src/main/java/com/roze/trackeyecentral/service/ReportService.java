@@ -61,9 +61,9 @@ public class ReportService {
             List<DashboardResponse.ActivitySummary> topActivities = new ArrayList<>();
             for (Map<String, Object> raw : topActivitiesRaw) {
                 topActivities.add(DashboardResponse.ActivitySummary.builder()
-                    .appName((String) raw.get("app_name"))
-                    .totalMinutes(((Number) raw.get("total_ms")).longValue() / 60000)
-                    .userCount(((Number) raw.get("session_count")).intValue())
+                    .appName((String) raw.get("appName"))
+                    .totalMinutes(((Number) raw.get("totalMs")).longValue() / 60000)
+                    .userCount(((Number) raw.get("sessionCount")).intValue())
                     .build());
             }
             
