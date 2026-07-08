@@ -140,8 +140,14 @@ class ApiClient {
             (response) => response,
             (error) => {
                 if (error.response?.status === 401 && typeof window !== 'undefined') {
-                    // Session/token expired - bounce to login.
-                    window.location.href = '/login';
+                    // Backend token rejected/expired. Clear the NextAuth session cookie
+                    // too (it lives 30 days, the backend token only 12h) so we don't
+                    // loop back into a dead session, then bounce to login.
+                    import('next-auth/react').then(({ signOut }) =>
+                        signOut({ callbackUrl: '/login' })
+                    ).catch(() => {
+                        window.location.href = '/login';
+                    });
                 }
                 return Promise.reject(error);
             }

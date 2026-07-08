@@ -3,8 +3,8 @@
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { useSession, signIn, signOut } from 'next-auth/react';
-// import { User } from '@/types';
-import {User} from "../types";
+import { useQueryClient } from 'react-query';
+import { User } from '../types';
 
 interface AuthContextType {
     user: User | null;
@@ -19,10 +19,23 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { data: session, status } = useSession();
     const [user, setUser] = useState<User | null>(null);
+    const queryClient = useQueryClient();
 
     useEffect(() => {
         if (session?.user) {
-            setUser(session.user as User);
+            // FIX: NextAuth stores the display name on `user.name`, but the rest of
+            // the app (and the User type) expects `fullName`. The old code did a bare
+            // `session.user as User` cast, so fullName was always undefined and the
+            // header rendered the literal fallback "User".
+            const s = session.user as any;
+            setUser({
+                id: s.id,
+                email: s.email,
+                fullName: s.name ?? s.fullName ?? '',
+                role: s.role,
+                status: 'active',
+                createdAt: 0,
+            } as User);
         } else {
             setUser(null);
         }
@@ -41,8 +54,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
 
     const logout = async () => {
-        await signOut({ redirect: false });
+        // Drop every cached react-query result so the next person to sign in on this
+        // browser never sees the previous user's employees/screenshots/activity.
+        queryClient.clear();
         setUser(null);
+        // FIX: the old code used { redirect: false }, so nothing navigated away and
+        // you stayed on the dashboard after signing out. Let NextAuth do the redirect.
+        await signOut({ callbackUrl: '/login' });
     };
 
     const hasPermission = (roles: string[]) => {

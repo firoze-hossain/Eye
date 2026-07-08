@@ -1,35 +1,39 @@
-// src/app/(dashboard)/layout.tsx (Update this)
+// src/app/(dashboard)/layout.tsx
 'use client';
 
-import { useState } from 'react';
-import {useAuth} from "../../context/AuthContext";
+import { useEffect, useState } from 'react';
+import { useAuth } from '../../context/AuthContext';
 import { useRouter } from 'next/navigation';
-//import Sidebar from '@/components/common/Sidebar';
-import Sidebar from "../../components/common/Sidebar";
-import Header from "../../components/common/Header";
-import LoadingSpinner from "../../components/common/LoadingSpinner";
+import Sidebar from '../../components/common/Sidebar';
+import Header from '../../components/common/Header';
+import LoadingSpinner from '../../components/common/LoadingSpinner';
 
 export default function DashboardLayout({
-                                            children,
-                                        }: {
+    children,
+}: {
     children: React.ReactNode;
 }) {
     const { user, isLoading } = useAuth();
     const router = useRouter();
     const [sidebarOpen, setSidebarOpen] = useState(true);
 
-    if (isLoading) {
-        return <LoadingSpinner />;
-    }
+    // FIX: the old code called router.push('/login') during render, which React
+    // warns about ("cannot update a component while rendering another") and can
+    // loop. Navigation belongs in an effect.
+    useEffect(() => {
+        if (!isLoading && !user) {
+            router.replace('/login');
+        }
+    }, [isLoading, user, router]);
 
-    if (!user) {
-        router.push('/login');
-        return null;
+    if (isLoading || !user) {
+        return <LoadingSpinner />;
     }
 
     return (
         <div className="flex h-screen bg-dark-50">
             <Sidebar sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} />
+            {/* Sidebar is position:fixed and always shown on lg, so offset the content. */}
             <div className="flex-1 flex flex-col overflow-hidden lg:ml-64">
                 <Header sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} />
                 <main className="flex-1 overflow-y-auto p-6">
