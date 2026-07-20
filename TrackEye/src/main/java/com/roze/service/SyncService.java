@@ -139,9 +139,20 @@ public class SyncService {
                 log.debug("Device not registered yet - skipping sync");
                 return;
             }
+            // FIX: if any of these calls hits a 401 that's genuinely dead
+            // (not a pause), invalidateStaleRegistration() clears apiKey/
+            // deviceIdentifier to null MID-CYCLE. Without checking isRegistered()
+            // again between steps, the NEXT call (e.g. syncAfk() right after
+            // syncActivities()) would send those null values as HTTP headers,
+            // and HttpRequest.Builder.header() throws NullPointerException on a
+            // null value - crashing the rest of the cycle with an opaque
+            // "Sync cycle failed: value" instead of just stopping cleanly.
             syncActivities();
+            if (!isRegistered()) return;
             syncAfk();
+            if (!isRegistered()) return;
             syncBrowser();
+            if (!isRegistered()) return;
             syncScreenshots();
             lastSuccessAt = System.currentTimeMillis();
             lastError = null;

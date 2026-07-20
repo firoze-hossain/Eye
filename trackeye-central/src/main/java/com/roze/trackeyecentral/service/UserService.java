@@ -73,6 +73,19 @@ public class UserService {
         if (!user.getOrganizationId().equals(orgId)) {
             throw new RuntimeException("Invalid token for this user");
         }
+
+        // FIX: an employee invited via Invite Employee is created with
+        // status="invited", and nothing ever moved them to "active" - so even
+        // with a perfectly correct device token, every sync attempt would be
+        // rejected with "User account is not active" forever. Successfully
+        // registering a device with a token tied to their own account IS the
+        // proof that they received the invite; activate them here instead of
+        // requiring a separate, easy-to-forget manual "Activate" click.
+        if ("invited".equals(user.getStatus())) {
+            user.setStatus("active");
+            userRepository.save(user);
+            log.info("Activated invited user {} on first device registration", user.getEmail());
+        }
         
         // Check if device already exists
         Device existingDevice = deviceRepository.findByDeviceIdentifier(request.getDeviceId()).orElse(null);
