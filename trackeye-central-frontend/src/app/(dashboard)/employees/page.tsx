@@ -8,17 +8,25 @@ import EmployeeTable from '@/components/employees/EmployeeTable';
 import LoadingSpinner from '@/components/common/LoadingSpinner';
 import Card from '@/components/ui/Card';
 import Modal from '@/components/ui/Modal';
-import { UserPlus, Search, Copy, Check } from 'lucide-react';
+import { UserPlus, Search, Copy, Check, Monitor } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export default function EmployeesPage() {
     const [searchTerm, setSearchTerm] = useState('');
     const [filterRole, setFilterRole] = useState('all');
+
+    // Invite flow
     const [inviteOpen, setInviteOpen] = useState(false);
     const [form, setForm] = useState({ email: '', fullName: '', role: 'employee' });
     const [submitting, setSubmitting] = useState(false);
     const [invite, setInvite] = useState<any | null>(null);
-    const [copied, setCopied] = useState(false);
+
+    // Device-token flow (separate from invite - see explanation in the modal)
+    const [deviceTokenFor, setDeviceTokenFor] = useState<{ id: number; fullName: string; email: string } | null>(null);
+    const [deviceToken, setDeviceToken] = useState<string | null>(null);
+    const [generatingToken, setGeneratingToken] = useState(false);
+
+    const [copied, setCopied] = useState<'invite' | 'device' | null>(null);
 
     const { data: employees, isLoading, refetch } = useQuery(
         'employees',
@@ -43,18 +51,32 @@ export default function EmployeesPage() {
         }
     };
 
-    const copyToken = async () => {
-        if (!invite?.inviteToken) return;
-        await navigator.clipboard.writeText(invite.inviteToken);
-        setCopied(true);
+    const copyToken = async (text: string, which: 'invite' | 'device') => {
+        await navigator.clipboard.writeText(text);
+        setCopied(which);
         toast.success('Token copied');
-        setTimeout(() => setCopied(false), 2000);
+        setTimeout(() => setCopied(null), 2000);
     };
 
     const closeInvite = () => {
         setInviteOpen(false);
         setInvite(null);
         setForm({ email: '', fullName: '', role: 'employee' });
+    };
+
+    const openDeviceToken = async (employee: { id: number; fullName: string; email: string }) => {
+        setDeviceTokenFor(employee);
+        setDeviceToken(null);
+        setGeneratingToken(true);
+        try {
+            const res = await apiClient.post<any>(API.employees.deviceToken(employee.id));
+            setDeviceToken(res.registrationToken);
+        } catch (e: any) {
+            toast.error(e.response?.data?.error || 'Could not generate device token');
+            setDeviceTokenFor(null);
+        } finally {
+            setGeneratingToken(false);
+        }
     };
 
     if (isLoading) return <LoadingSpinner />;
@@ -109,27 +131,24 @@ export default function EmployeesPage() {
                 </div>
             </Card>
 
-            <EmployeeTable employees={filteredEmployees || []} onRefresh={refetch} />
+            <EmployeeTable
+                employees={filteredEmployees || []}
+                onRefresh={refetch}
+                onGenerateDeviceToken={openDeviceToken}
+            />
 
+            {/* Invite modal - creates the account. Does NOT connect a device. */}
             <Modal isOpen={inviteOpen} onClose={closeInvite} title="Invite Employee">
                 {invite ? (
                     <div className="space-y-4">
                         <p className="text-sm text-dark-600">
-                            Invitation created for <span className="font-medium">{invite.email}</span>.
-                            Share this token so they can connect their computer (expires in {invite.expiresInHours}h).
+                            Account created for <span className="font-medium">{invite.email}</span>.
                         </p>
-                        <div className="flex gap-2">
-                            <code className="flex-1 px-3 py-2.5 bg-dark-50 border border-dark-200 rounded-lg text-sm font-mono break-all select-all">
-                                {invite.inviteToken}
-                            </code>
-                            <button onClick={copyToken} className="px-3 rounded-lg border border-dark-200 hover:bg-dark-50 flex-none">
-                                {copied ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4 text-dark-500" />}
-                            </button>
+                        <div className="p-3 bg-blue-50 border border-blue-100 rounded-lg text-sm text-blue-800">
+                            This does not connect their computer yet - that's a separate step.
+                            Once they're ready to install the agent, use <strong>"Generate device token"</strong> from
+                            their row in the table below and give them that token instead.
                         </div>
-                        <p className="text-xs text-dark-400">
-                            They open <span className="font-mono">http://localhost:8765/setup.html</span> on their machine,
-                            enter their email and this token.
-                        </p>
                         <div className="flex justify-end">
                             <button onClick={closeInvite} className="btn-primary">Done</button>
                         </div>
@@ -163,6 +182,53 @@ export default function EmployeesPage() {
                                 {submitting ? 'Sending…' : 'Create invite'}
                             </button>
                         </div>
+                    </div>
+                )}
+            </Modal>
+
+            {/* Device-token modal - THE correct token for setup.html. */}
+            <Modal
+                isOpen={!!deviceTokenFor}
+                onClose={() => { setDeviceTokenFor(null); setDeviceToken(null); }}
+                title="Connect a computer"
+            >
+                {deviceTokenFor && (
+                    <div className="space-y-4">
+                        <p className="text-sm text-dark-600 flex items-center gap-2">
+                            <Monitor className="w-4 h-4 flex-none" />
+                            Device registration token for <span className="font-medium">{deviceTokenFor.fullName}</span>
+                        </p>
+
+                        {generatingToken ? (
+                            <LoadingSpinner />
+                        ) : deviceToken ? (
+                            <>
+                                <div className="flex gap-2">
+                                    <code className="flex-1 px-3 py-2.5 bg-dark-50 border border-dark-200 rounded-lg text-sm font-mono break-all select-all">
+                                        {deviceToken}
+                                    </code>
+                                    <button onClick={() => copyToken(deviceToken, 'device')} className="px-3 rounded-lg border border-dark-200 hover:bg-dark-50 flex-none">
+                                        {copied === 'device' ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4 text-dark-500" />}
+                                    </button>
+                                </div>
+                                <p className="text-xs text-dark-400">
+                                    On <strong>{deviceTokenFor.fullName}'s</strong> computer, install the TrackEye agent, open{' '}
+                                    <span className="font-mono">http://localhost:8765/setup.html</span>, and enter{' '}
+                                    <strong>{deviceTokenFor.email}</strong> with this token.
+                                </p>
+                                <div className="flex justify-between items-center">
+                                    <button
+                                        onClick={() => openDeviceToken(deviceTokenFor)}
+                                        className="text-sm text-primary-600 hover:underline"
+                                    >
+                                        Generate another
+                                    </button>
+                                    <button onClick={() => { setDeviceTokenFor(null); setDeviceToken(null); }} className="btn-primary">
+                                        Done
+                                    </button>
+                                </div>
+                            </>
+                        ) : null}
                     </div>
                 )}
             </Modal>

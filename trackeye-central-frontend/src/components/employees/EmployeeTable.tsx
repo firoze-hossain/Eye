@@ -2,7 +2,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { UserCheck, UserX, Eye } from 'lucide-react';
+import { UserCheck, UserX, Eye, Monitor } from 'lucide-react';
 import Card from '../ui/Card';
 import ActionMenu from '../ui/ActionMenu';
 import toast from 'react-hot-toast';
@@ -12,9 +12,10 @@ import { useAuth } from '@/context/AuthContext';
 interface EmployeeTableProps {
     employees: any[];
     onRefresh: () => void;
+    onGenerateDeviceToken?: (employee: { id: number; fullName: string; email: string }) => void;
 }
 
-export default function EmployeeTable({ employees, onRefresh }: EmployeeTableProps) {
+export default function EmployeeTable({ employees, onRefresh, onGenerateDeviceToken }: EmployeeTableProps) {
     const router = useRouter();
     const { user } = useAuth();
     const isAdmin = user?.role === 'admin';
@@ -130,6 +131,11 @@ export default function EmployeeTable({ employees, onRefresh }: EmployeeTablePro
                                             icon: <Eye className="w-4 h-4" />,
                                             onClick: () => router.push(`/employees/${employee.id}`),
                                         },
+                                        ...(onGenerateDeviceToken ? [{
+                                            label: 'Generate device token',
+                                            icon: <Monitor className="w-4 h-4" />,
+                                            onClick: () => onGenerateDeviceToken(employee),
+                                        }] : []),
                                         {
                                             label: employee.status === 'active' ? 'Deactivate' : 'Activate',
                                             icon: employee.status === 'active'

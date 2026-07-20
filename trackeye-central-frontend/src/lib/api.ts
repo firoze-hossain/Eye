@@ -224,6 +224,7 @@ export const API = {
         deactivate: (id: number) => `/api/admin/employees/${id}/deactivate`,
         activate: (id: number) => `/api/admin/employees/${id}/activate`,
         invite: '/api/admin/invite',
+        deviceToken: (userId: number) => `/api/admin/device-token?forUserId=${userId}`,
         assignManager: (id: number) => `/api/admin/employees/${id}/manager`,
     },
     reports: {
