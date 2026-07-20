@@ -1,6 +1,7 @@
 package com.roze.api;
 
 import com.roze.service.InstallationService;
+import com.roze.service.RemoteViewService;
 import com.roze.service.SyncService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -29,17 +30,35 @@ public class SetupController {
 
     private final InstallationService installationService;
     private final SyncService syncService;
+    private final RemoteViewService remoteViewService;
 
     @GetMapping("/status")
     public ResponseEntity<Map<String, Object>> status() {
         SyncService.SyncHealth h = syncService.health();
         return ResponseEntity.ok(Map.of(
                 "registered", h.registered(),
+                "serverUrl", syncService.getServerUrl() == null ? "" : syncService.getServerUrl(),
                 "lastAttemptAt", h.lastAttemptAt(),
                 "lastSuccessAt", h.lastSuccessAt(),
                 "lastError", h.lastError() == null ? "" : h.lastError(),
                 "unsyncedRows", h.unsyncedRows()
         ));
+    }
+
+    /**
+     * Change which central server this agent talks to - no file editing or
+     * rebuild required. The #1 friction point onboarding a device on a
+     * different network than the one baked into application.properties.
+     */
+    @PostMapping("/server-url")
+    public ResponseEntity<Map<String, Object>> setServerUrl(@RequestBody ServerUrlRequest body) {
+        if (body.getServerUrl() == null || body.getServerUrl().isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("success", false, "message", "serverUrl is required"));
+        }
+        syncService.setServerUrl(body.getServerUrl());
+        remoteViewService.reloadConfig();
+        log.info("Server address updated to {}", body.getServerUrl());
+        return ResponseEntity.ok(Map.of("success", true));
     }
 
     @PostMapping("/register")
@@ -55,6 +74,7 @@ public class SetupController {
         if (result.isSuccess()) {
             // Pick up the freshly written API key without restarting the app.
             syncService.reloadConfig();
+            remoteViewService.reloadConfig();
             log.info("Device registered and sync enabled");
             return ResponseEntity.ok(Map.of(
                     "success", true, "message", "Device registered. Syncing is now active."));
@@ -69,5 +89,10 @@ public class SetupController {
     public static class RegisterRequest {
         private String email;
         private String registrationToken;
+    }
+
+    @lombok.Data
+    public static class ServerUrlRequest {
+        private String serverUrl;
     }
 }

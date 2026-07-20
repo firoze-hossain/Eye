@@ -72,6 +72,9 @@
   </div>
 
   <div id="form">
+    <label for="serverUrl">Server address</label>
+    <input id="serverUrl" type="text" placeholder="http://192.168.1.50:8080" />
+
     <label for="email">Your work email</label>
     <input id="email" type="email" placeholder="you@company.com" autocomplete="email" />
 
@@ -92,6 +95,9 @@
 <script>
   const $ = (id) => document.getElementById(id);
   const dot = $('dot'), statusText = $('statusText'), detailText = $('detailText'), msg = $('msg'), form = $('form');
+  const serverUrlInput = $('serverUrl');
+  let serverUrlEditedByUser = false;
+  serverUrlInput.addEventListener('input', () => { serverUrlEditedByUser = true; });
 
   function setMsg(text, kind) {
     msg.textContent = text;
@@ -114,6 +120,10 @@
     try {
       const r = await fetch('/api/setup/status');
       const d = await r.json();
+
+      if (!serverUrlEditedByUser && d.serverUrl && !serverUrlInput.value) {
+        serverUrlInput.value = d.serverUrl;
+      }
 
       if (!d.registered) {
         dot.className = 'dot off';
@@ -161,11 +171,12 @@
   }
 
   $('submit').addEventListener('click', async () => {
+    const serverUrl = serverUrlInput.value.trim();
     const email = $('email').value.trim();
     const registrationToken = $('token').value.trim();
 
-    if (!email || !registrationToken) {
-      setMsg('Enter both your email and the registration token.', 'err');
+    if (!serverUrl || !email || !registrationToken) {
+      setMsg('Enter the server address, your email, and the registration token.', 'err');
       return;
     }
 
@@ -175,6 +186,19 @@
     msg.className = 'msg';
 
     try {
+      // Save the server address first - registration below will fail with a
+      // ConnectException if this points somewhere unreachable, and that's a
+      // much clearer failure than silently registering against the wrong host.
+      const urlResp = await fetch('/api/setup/server-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ serverUrl })
+      });
+      if (!urlResp.ok) {
+        setMsg('Could not save the server address.', 'err');
+        return;
+      }
+
       const r = await fetch('/api/setup/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -197,7 +221,7 @@
   });
 
   // Allow Enter to submit
-  ['email', 'token'].forEach(id =>
+  ['serverUrl', 'email', 'token'].forEach(id =>
     $(id).addEventListener('keydown', e => { if (e.key === 'Enter') $('submit').click(); })
   );
 

@@ -25,6 +25,24 @@ public class InstallationService {
     @Value("${trackeye.server.url:http://localhost:8080}")
     private String serverUrl;
 
+    private final SyncService syncService;
+
+    public InstallationService(SyncService syncService) {
+        this.syncService = syncService;
+    }
+
+    /**
+     * The URL to register against. Prefers whatever setup.html most recently
+     * set (via SyncService.setServerUrl) over the fixed @Value default -
+     * otherwise, after changing the server address from the setup page, a
+     * fresh registration would silently ignore it and use the stale value
+     * baked in at startup.
+     */
+    private String effectiveServerUrl() {
+        String current = syncService.getServerUrl();
+        return (current != null && !current.isEmpty()) ? current : serverUrl;
+    }
+
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(30))
             .build();
@@ -53,7 +71,7 @@ public class InstallationService {
             String jsonBody = objectMapper.writeValueAsString(request);
 
             HttpRequest httpRequest = HttpRequest.newBuilder()
-                    .uri(URI.create(serverUrl + "/api/public/register-device"))
+                    .uri(URI.create(effectiveServerUrl() + "/api/public/register-device"))
                     .header("Content-Type", "application/json")
                     .timeout(Duration.ofSeconds(30))
                     .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
@@ -129,7 +147,7 @@ public class InstallationService {
         Files.createDirectories(configDir);
 
         Properties props = new Properties();
-        props.setProperty("trackeye.server.url", serverUrl);
+        props.setProperty("trackeye.server.url", effectiveServerUrl());
         props.setProperty("trackeye.client.api-key", response.getApiKey());
         props.setProperty("trackeye.client.device-id", response.getDeviceIdentifier());
         props.setProperty("trackeye.client.user-id", String.valueOf(response.getUserId()));

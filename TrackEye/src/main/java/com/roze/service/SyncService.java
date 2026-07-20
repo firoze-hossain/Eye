@@ -102,6 +102,36 @@ public class SyncService {
                 && deviceIdentifier != null && !deviceIdentifier.isEmpty();
     }
 
+    public String getServerUrl() {
+        return serverUrl;
+    }
+
+    /**
+     * Lets setup.html set/change the server address without editing
+     * application.properties and rebuilding - the #1 friction point when
+     * onboarding a device that isn't on the same network the defaults assume.
+     * Preserves any existing api-key/device-id already on disk (unlike a fresh
+     * registration, which intentionally rewrites the whole file).
+     */
+    public synchronized void setServerUrl(String url) {
+        String cleaned = trimSlash(url);
+        this.serverUrl = cleaned;
+        try {
+            Properties p = new Properties();
+            if (Files.exists(CONFIG_FILE)) {
+                try (var in = Files.newInputStream(CONFIG_FILE)) { p.load(in); }
+            } else {
+                Files.createDirectories(CONFIG_FILE.getParent());
+            }
+            p.setProperty("trackeye.server.url", cleaned);
+            try (var out = Files.newOutputStream(CONFIG_FILE)) {
+                p.store(out, "TrackEye Client Configuration");
+            }
+        } catch (Exception e) {
+            log.warn("Could not persist server URL: {}", e.getMessage());
+        }
+    }
+
     private void syncSafely() {
         lastAttemptAt = System.currentTimeMillis();
         try {
