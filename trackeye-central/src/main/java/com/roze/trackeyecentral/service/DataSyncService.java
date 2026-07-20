@@ -252,24 +252,35 @@ public class DataSyncService {
     }
 
     // ---- policy rule checks -------------------------------------------------
+    // Wrapped defensively: a bug or slow query in policy checking must never
+    // fail (or, since these run inside a @Transactional method, roll back) the
+    // actual activity/browser sync the client is waiting on. Best-effort only.
 
     private void checkPolicyForApps(Long deviceId, List<ActivitySyncRequest> activities) {
-        var ownerOpt = resolveOwner(deviceId);
-        if (ownerOpt.isEmpty()) return;
-        var owner = ownerOpt.get();
-        for (ActivitySyncRequest a : activities) {
-            policyService.checkAppActivity(owner.organizationId(), owner.userId(), deviceId,
-                    a.getAppName(), a.getProcessName());
+        try {
+            var ownerOpt = resolveOwner(deviceId);
+            if (ownerOpt.isEmpty()) return;
+            var owner = ownerOpt.get();
+            for (ActivitySyncRequest a : activities) {
+                policyService.checkAppActivity(owner.organizationId(), owner.userId(), deviceId,
+                        a.getAppName(), a.getProcessName());
+            }
+        } catch (Exception e) {
+            log.warn("Policy check (apps) failed for device {}: {}", deviceId, e.getMessage());
         }
     }
 
     private void checkPolicyForBrowser(Long deviceId, List<BrowserActivitySyncRequest> activities) {
-        var ownerOpt = resolveOwner(deviceId);
-        if (ownerOpt.isEmpty()) return;
-        var owner = ownerOpt.get();
-        for (BrowserActivitySyncRequest a : activities) {
-            policyService.checkBrowserActivity(owner.organizationId(), owner.userId(), deviceId,
-                    a.getUrl(), a.getPageTitle());
+        try {
+            var ownerOpt = resolveOwner(deviceId);
+            if (ownerOpt.isEmpty()) return;
+            var owner = ownerOpt.get();
+            for (BrowserActivitySyncRequest a : activities) {
+                policyService.checkBrowserActivity(owner.organizationId(), owner.userId(), deviceId,
+                        a.getUrl(), a.getPageTitle());
+            }
+        } catch (Exception e) {
+            log.warn("Policy check (browser) failed for device {}: {}", deviceId, e.getMessage());
         }
     }
 
