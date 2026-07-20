@@ -218,6 +218,8 @@ export const API = {
     },
     devices: {
         revoke: (deviceId: number) => `/api/admin/devices/${deviceId}/revoke`,
+        pause: (deviceId: number) => `/api/admin/devices/${deviceId}/pause`,
+        resume: (deviceId: number) => `/api/admin/devices/${deviceId}/resume`,
         watchStart: (deviceId: number) => `/api/admin/devices/${deviceId}/watch/start`,
         watchRenew: (deviceId: number) => `/api/admin/devices/${deviceId}/watch/renew`,
         watchStop: (deviceId: number) => `/api/admin/devices/${deviceId}/watch/stop`,

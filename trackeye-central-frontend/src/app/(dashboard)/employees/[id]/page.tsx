@@ -3,13 +3,14 @@
 
 import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { useQuery } from 'react-query';
-import { ArrowLeft, Monitor, Clock, Coffee, Camera, Activity, Eye } from 'lucide-react';
+import { useQuery, useQueryClient } from 'react-query';
+import { ArrowLeft, Monitor, Clock, Coffee, Camera, Activity, Eye, PauseCircle, PlayCircle } from 'lucide-react';
 import Card from '@/components/ui/Card';
 import LoadingSpinner from '@/components/common/LoadingSpinner';
 import AuthenticatedImage from '@/components/common/AuthenticatedImage';
 import WatchLiveModal from '@/components/employees/WatchLiveModal';
 import { apiClient, API } from '@/lib/api';
+import toast from 'react-hot-toast';
 
 interface DeviceRow {
     id: number;
@@ -18,6 +19,7 @@ interface DeviceRow {
     osType: string;
     lastSeenAt: number;
     isActive: boolean;
+    paused: boolean;
 }
 interface UserDetail {
     id: number;
@@ -64,6 +66,17 @@ export default function EmployeeDetailsPage() {
     const userId = Number(params.id);
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
     const [watching, setWatching] = useState<DeviceRow | null>(null);
+    const queryClient = useQueryClient();
+
+    const togglePause = async (deviceId: number, pause: boolean) => {
+        try {
+            await apiClient.post(pause ? API.devices.pause(deviceId) : API.devices.resume(deviceId));
+            toast.success(pause ? 'Device syncing stopped' : 'Device syncing resumed');
+            queryClient.invalidateQueries(['employee', userId]);
+        } catch (e: any) {
+            toast.error(e.response?.data?.error || 'Could not update device');
+        }
+    };
 
     const { data: user, isLoading: userLoading } = useQuery<UserDetail>(
         ['employee', userId],
@@ -155,19 +168,39 @@ export default function EmployeeDetailsPage() {
                                 </div>
                                 <div className="flex items-center gap-3">
                                     <div className="text-right">
-                                        <span className={`text-xs px-2 py-0.5 rounded-full ${d.isActive ? 'bg-green-100 text-green-700' : 'bg-dark-100 text-dark-500'}`}>
-                                            {d.isActive ? 'Active' : 'Revoked'}
+                                        <span className={`text-xs px-2 py-0.5 rounded-full ${
+                                            !d.isActive ? 'bg-dark-100 text-dark-500'
+                                                : d.paused ? 'bg-yellow-100 text-yellow-700'
+                                                : 'bg-green-100 text-green-700'
+                                        }`}>
+                                            {!d.isActive ? 'Revoked' : d.paused ? 'Paused' : 'Active'}
                                         </span>
                                         <p className="text-xs text-dark-400 mt-1">
                                             {d.lastSeenAt ? `Seen ${new Date(d.lastSeenAt).toLocaleString()}` : 'Never seen'}
                                         </p>
                                     </div>
-                                    {d.isActive && (
+                                    {d.isActive && !d.paused && (
+                                        <>
+                                            <button
+                                                onClick={() => setWatching(d)}
+                                                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-primary-600 text-white hover:bg-primary-700"
+                                            >
+                                                <Eye className="w-3.5 h-3.5" /> Watch Live
+                                            </button>
+                                            <button
+                                                onClick={() => togglePause(d.id, true)}
+                                                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-dark-200 text-dark-600 hover:bg-dark-50"
+                                            >
+                                                <PauseCircle className="w-3.5 h-3.5" /> Stop syncing
+                                            </button>
+                                        </>
+                                    )}
+                                    {d.isActive && d.paused && (
                                         <button
-                                            onClick={() => setWatching(d)}
-                                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-primary-600 text-white hover:bg-primary-700"
+                                            onClick={() => togglePause(d.id, false)}
+                                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-green-600 text-white hover:bg-green-700"
                                         >
-                                            <Eye className="w-3.5 h-3.5" /> Watch Live
+                                            <PlayCircle className="w-3.5 h-3.5" /> Resume syncing
                                         </button>
                                     )}
                                 </div>

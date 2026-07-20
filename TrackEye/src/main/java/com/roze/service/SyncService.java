@@ -294,6 +294,18 @@ public class SyncService {
      */
     private synchronized void invalidateStaleRegistration(String serverErrorBody) {
         if (apiKey == null && deviceIdentifier == null) return; // already cleared
+
+        // A pause is deliberate and reversible - the admin flips it back on and
+        // the SAME api key becomes valid again. Clearing credentials here would
+        // force a pointless re-registration with a brand new token just to
+        // resume. Only genuinely dead credentials (wrong key, expired,
+        // hard-revoked, device row missing) should trigger a clear.
+        if (serverErrorBody != null && serverErrorBody.contains("Device is paused")) {
+            log.info("This device has been paused by an admin. Sync will resume automatically once un-paused - no action needed.");
+            this.lastError = "Paused by admin - waiting to be resumed";
+            return;
+        }
+
         log.warn("Server rejected this device's credentials ({}). Clearing local registration - " +
                 "open http://localhost:8765/setup.html to register again.", truncate(serverErrorBody));
 

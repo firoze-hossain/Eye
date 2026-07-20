@@ -133,8 +133,14 @@
       // working. We show the real last-success time and any real error.
       const hasSynced = d.lastSuccessAt > 0;
       const recentError = d.lastError && d.lastError.length > 0;
+      const isPaused = d.lastError && d.lastError.indexOf('Paused by admin') !== -1;
 
-      if (recentError && (!hasSynced || d.lastAttemptAt > d.lastSuccessAt)) {
+      if (isPaused) {
+        dot.className = 'dot';
+        statusText.textContent = 'Paused by admin';
+        detailText.textContent = 'This device will resume syncing automatically once un-paused - ' +
+                d.unsyncedRows + ' row(s) queued locally in the meantime.';
+      } else if (recentError && (!hasSynced || d.lastAttemptAt > d.lastSuccessAt)) {
         dot.className = 'dot off';
         statusText.textContent = 'Connected, but syncing is failing';
         detailText.textContent = 'Last error: ' + d.lastError + ' · ' + d.unsyncedRows + ' rows waiting to upload';
