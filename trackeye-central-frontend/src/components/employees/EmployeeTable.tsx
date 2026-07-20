@@ -7,6 +7,7 @@ import { MoreVertical, UserCheck, UserX, Eye } from 'lucide-react';
 import Card from '../ui/Card';
 import toast from 'react-hot-toast';
 import { apiClient, API } from '@/lib/api';
+import { useAuth } from '@/context/AuthContext';
 
 interface EmployeeTableProps {
     employees: any[];
@@ -15,7 +16,12 @@ interface EmployeeTableProps {
 
 export default function EmployeeTable({ employees, onRefresh }: EmployeeTableProps) {
     const router = useRouter();
+    const { user } = useAuth();
+    const isAdmin = user?.role === 'admin';
     const [openMenu, setOpenMenu] = useState<number | null>(null);
+
+    // Anyone with role 'supervisor' can be picked as a manager for another employee.
+    const supervisors = employees.filter((e) => e.role === 'supervisor' || e.role === 'admin');
 
     const handleStatusChange = async (userId: number, currentStatus: string) => {
         try {
@@ -29,6 +35,18 @@ export default function EmployeeTable({ employees, onRefresh }: EmployeeTablePro
             onRefresh();
         } catch (error) {
             toast.error('Failed to update status');
+        }
+    };
+
+    const handleManagerChange = async (employeeId: number, managerId: string) => {
+        try {
+            await apiClient.post(API.employees.assignManager(employeeId), {
+                managerId: managerId ? Number(managerId) : null,
+            });
+            toast.success('Manager updated');
+            onRefresh();
+        } catch {
+            toast.error('Failed to update manager');
         }
     };
 
@@ -54,6 +72,9 @@ export default function EmployeeTable({ employees, onRefresh }: EmployeeTablePro
                         <th className="text-left py-3 px-4 text-sm font-medium text-dark-500">Employee</th>
                         <th className="text-left py-3 px-4 text-sm font-medium text-dark-500">Email</th>
                         <th className="text-left py-3 px-4 text-sm font-medium text-dark-500">Role</th>
+                        {isAdmin && (
+                            <th className="text-left py-3 px-4 text-sm font-medium text-dark-500">Reports to</th>
+                        )}
                         <th className="text-left py-3 px-4 text-sm font-medium text-dark-500">Status</th>
                         <th className="text-left py-3 px-4 text-sm font-medium text-dark-500">Joined</th>
                         <th className="text-right py-3 px-4 text-sm font-medium text-dark-500">Actions</th>
@@ -76,6 +97,26 @@ export default function EmployeeTable({ employees, onRefresh }: EmployeeTablePro
                             <td className="py-3 px-4">
                                 <span className="capitalize text-dark-600">{employee.role}</span>
                             </td>
+                            {isAdmin && (
+                                <td className="py-3 px-4">
+                                    {employee.id === user?.id ? (
+                                        <span className="text-dark-300 text-sm">—</span>
+                                    ) : (
+                                        <select
+                                            value={employee.managerId ?? ''}
+                                            onChange={(e) => handleManagerChange(employee.id, e.target.value)}
+                                            className="text-sm border border-dark-200 rounded-md px-2 py-1 bg-white"
+                                        >
+                                            <option value="">Unassigned</option>
+                                            {supervisors
+                                                .filter((s) => s.id !== employee.id)
+                                                .map((s) => (
+                                                    <option key={s.id} value={s.id}>{s.fullName}</option>
+                                                ))}
+                                        </select>
+                                    )}
+                                </td>
+                            )}
                             <td className="py-3 px-4">
                   <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusBadge(employee.status)}`}>
                     {employee.status}

@@ -2,9 +2,10 @@
 'use client';
 
 import { useAuth } from '../../context/AuthContext';
-import { Menu, Bell, User, LogOut, Settings, Loader2 } from 'lucide-react';
+import { Menu, User, LogOut, Settings, Loader2 } from 'lucide-react';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import NotificationBell from './NotificationBell';
 
 interface HeaderProps {
     sidebarOpen: boolean;
@@ -38,10 +39,7 @@ export default function Header({ sidebarOpen, setSidebarOpen }: HeaderProps) {
             </button>
 
             <div className="flex items-center gap-4 ml-auto">
-                <button className="p-2 rounded-lg hover:bg-dark-100 relative">
-                    <Bell className="w-5 h-5 text-dark-600" />
-                    <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
-                </button>
+                <NotificationBell />
 
                 <div className="relative">
                     <button

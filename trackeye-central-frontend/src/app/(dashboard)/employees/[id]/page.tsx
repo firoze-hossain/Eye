@@ -4,10 +4,11 @@
 import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useQuery } from 'react-query';
-import { ArrowLeft, Monitor, Clock, Coffee, Camera, Activity } from 'lucide-react';
+import { ArrowLeft, Monitor, Clock, Coffee, Camera, Activity, Eye } from 'lucide-react';
 import Card from '@/components/ui/Card';
 import LoadingSpinner from '@/components/common/LoadingSpinner';
 import AuthenticatedImage from '@/components/common/AuthenticatedImage';
+import WatchLiveModal from '@/components/employees/WatchLiveModal';
 import { apiClient, API } from '@/lib/api';
 
 interface DeviceRow {
@@ -62,6 +63,7 @@ export default function EmployeeDetailsPage() {
     const router = useRouter();
     const userId = Number(params.id);
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+    const [watching, setWatching] = useState<DeviceRow | null>(null);
 
     const { data: user, isLoading: userLoading } = useQuery<UserDetail>(
         ['employee', userId],
@@ -151,13 +153,23 @@ export default function EmployeeDetailsPage() {
                                     <p className="font-medium text-dark-800">{d.deviceName}</p>
                                     <p className="text-xs text-dark-400">{d.osType} · {d.deviceIdentifier}</p>
                                 </div>
-                                <div className="text-right">
-                                    <span className={`text-xs px-2 py-0.5 rounded-full ${d.isActive ? 'bg-green-100 text-green-700' : 'bg-dark-100 text-dark-500'}`}>
-                                        {d.isActive ? 'Active' : 'Revoked'}
-                                    </span>
-                                    <p className="text-xs text-dark-400 mt-1">
-                                        {d.lastSeenAt ? `Seen ${new Date(d.lastSeenAt).toLocaleString()}` : 'Never seen'}
-                                    </p>
+                                <div className="flex items-center gap-3">
+                                    <div className="text-right">
+                                        <span className={`text-xs px-2 py-0.5 rounded-full ${d.isActive ? 'bg-green-100 text-green-700' : 'bg-dark-100 text-dark-500'}`}>
+                                            {d.isActive ? 'Active' : 'Revoked'}
+                                        </span>
+                                        <p className="text-xs text-dark-400 mt-1">
+                                            {d.lastSeenAt ? `Seen ${new Date(d.lastSeenAt).toLocaleString()}` : 'Never seen'}
+                                        </p>
+                                    </div>
+                                    {d.isActive && (
+                                        <button
+                                            onClick={() => setWatching(d)}
+                                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-primary-600 text-white hover:bg-primary-700"
+                                        >
+                                            <Eye className="w-3.5 h-3.5" /> Watch Live
+                                        </button>
+                                    )}
                                 </div>
                             </div>
                         ))}
@@ -250,6 +262,15 @@ export default function EmployeeDetailsPage() {
                     </div>
                 )}
             </Card>
+
+            {watching && (
+                <WatchLiveModal
+                    deviceId={watching.id}
+                    deviceName={watching.deviceName}
+                    userFullName={user.fullName}
+                    onClose={() => setWatching(null)}
+                />
+            )}
         </div>
     );
 }

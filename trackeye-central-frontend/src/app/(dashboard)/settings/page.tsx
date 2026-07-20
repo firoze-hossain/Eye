@@ -1,9 +1,9 @@
 // src/app/(dashboard)/settings/page.tsx
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery } from 'react-query';
-import { Copy, Check, Monitor, Shield, User as UserIcon, Info } from 'lucide-react';
+import { Copy, Check, Monitor, Shield, User as UserIcon, Info, ShieldAlert, Trash2 } from 'lucide-react';
 import Card from '@/components/ui/Card';
 import LoadingSpinner from '@/components/common/LoadingSpinner';
 import { apiClient } from '@/lib/api';
@@ -138,6 +138,141 @@ export default function SettingsPage() {
                     </p>
                 </div>
             </Card>
+
+            {isManager && <PolicyRulesCard />}
         </div>
+    );
+}
+
+// ---- Policy rules management ------------------------------------------------
+
+interface PolicyRule {
+    id: number;
+    category: string;
+    matchType: string;
+    pattern: string;
+    severity: string;
+    active: boolean;
+}
+
+const CATEGORIES = ['GAMBLING', 'ADULT', 'GAMING', 'SOCIAL_MEDIA', 'CUSTOM'];
+const MATCH_TYPES = [
+    { value: 'URL_DOMAIN', label: 'Website domain' },
+    { value: 'URL_KEYWORD', label: 'URL contains' },
+    { value: 'APP_NAME', label: 'Desktop app name' },
+    { value: 'WINDOW_TITLE_KEYWORD', label: 'Window title contains' },
+];
+
+function PolicyRulesCard() {
+    const [rules, setRules] = useState<PolicyRule[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [form, setForm] = useState({ category: 'GAMBLING', matchType: 'URL_DOMAIN', pattern: '', severity: 'MEDIUM' });
+    const [saving, setSaving] = useState(false);
+
+    const load = async () => {
+        setLoading(true);
+        try {
+            const data = await apiClient.get<PolicyRule[]>('/api/admin/policy-rules');
+            setRules(data);
+        } catch {
+            toast.error('Could not load policy rules');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => { load(); }, []);
+
+    const addRule = async () => {
+        if (!form.pattern.trim()) {
+            toast.error('Enter a pattern to match');
+            return;
+        }
+        setSaving(true);
+        try {
+            await apiClient.post('/api/admin/policy-rules', form);
+            toast.success('Rule added');
+            setForm({ ...form, pattern: '' });
+            load();
+        } catch {
+            toast.error('Could not add rule');
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const removeRule = async (id: number) => {
+        try {
+            await apiClient.delete(`/api/admin/policy-rules/${id}`);
+            toast.success('Rule removed');
+            load();
+        } catch {
+            toast.error('Could not remove rule');
+        }
+    };
+
+    return (
+        <Card className="p-6 max-w-3xl">
+            <h2 className="font-semibold text-dark-900 mb-1 flex items-center gap-2">
+                <ShieldAlert className="w-4 h-4" /> Policy alerts
+            </h2>
+            <p className="text-sm text-dark-500 mb-4">
+                Get notified when an employee's activity matches a rule you define here -
+                a gambling site, a game launcher, an adult-content keyword, or anything
+                else specific to your organization. Nothing is blocked pre-emptively;
+                admins (and the employee's manager) are simply alerted.
+            </p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 mb-4">
+                <select
+                    className="input text-sm"
+                    value={form.category}
+                    onChange={(e) => setForm({ ...form, category: e.target.value })}
+                >
+                    {CATEGORIES.map((c) => <option key={c} value={c}>{c.replace('_', ' ')}</option>)}
+                </select>
+                <select
+                    className="input text-sm"
+                    value={form.matchType}
+                    onChange={(e) => setForm({ ...form, matchType: e.target.value })}
+                >
+                    {MATCH_TYPES.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+                </select>
+                <input
+                    className="input text-sm"
+                    placeholder="e.g. bet365.com or steam"
+                    value={form.pattern}
+                    onChange={(e) => setForm({ ...form, pattern: e.target.value })}
+                />
+                <button onClick={addRule} disabled={saving} className="btn-primary text-sm disabled:opacity-50">
+                    {saving ? 'Adding…' : 'Add rule'}
+                </button>
+            </div>
+
+            {loading ? (
+                <LoadingSpinner />
+            ) : !rules.length ? (
+                <p className="text-sm text-dark-400">No rules yet — add one above to start getting alerts.</p>
+            ) : (
+                <div className="space-y-2">
+                    {rules.map((r) => (
+                        <div key={r.id} className="flex items-center justify-between p-2.5 border border-dark-100 rounded-lg text-sm">
+                            <div className="flex items-center gap-2">
+                                <span className="px-2 py-0.5 rounded-full bg-dark-100 text-dark-600 text-xs capitalize">
+                                    {r.category.replace('_', ' ').toLowerCase()}
+                                </span>
+                                <span className="text-dark-700">{r.pattern}</span>
+                                <span className="text-dark-400 text-xs">
+                                    ({MATCH_TYPES.find((m) => m.value === r.matchType)?.label})
+                                </span>
+                            </div>
+                            <button onClick={() => removeRule(r.id)} className="text-dark-400 hover:text-red-600">
+                                <Trash2 className="w-4 h-4" />
+                            </button>
+                        </div>
+                    ))}
+                </div>
+            )}
+        </Card>
     );
 }

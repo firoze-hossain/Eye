@@ -211,12 +211,28 @@ export const API = {
         deactivate: (id: number) => `/api/admin/employees/${id}/deactivate`,
         activate: (id: number) => `/api/admin/employees/${id}/activate`,
         invite: '/api/admin/invite',
+        assignManager: (id: number) => `/api/admin/employees/${id}/manager`,
     },
     reports: {
         weekly: (userId?: number) => `/api/admin/reports/weekly${userId ? `?userId=${userId}` : ''}`,
     },
     devices: {
         revoke: (deviceId: number) => `/api/admin/devices/${deviceId}/revoke`,
+        watchStart: (deviceId: number) => `/api/admin/devices/${deviceId}/watch/start`,
+        watchRenew: (deviceId: number) => `/api/admin/devices/${deviceId}/watch/renew`,
+        watchStop: (deviceId: number) => `/api/admin/devices/${deviceId}/watch/stop`,
+        watchFrame: (deviceId: number) => `/api/admin/devices/${deviceId}/watch/frame`,
+    },
+    policyRules: {
+        list: '/api/admin/policy-rules',
+        create: '/api/admin/policy-rules',
+        delete: (id: number) => `/api/admin/policy-rules/${id}`,
+    },
+    notifications: {
+        list: '/api/admin/notifications',
+        unreadCount: '/api/admin/notifications/unread-count',
+        markRead: (id: number) => `/api/admin/notifications/${id}/read`,
+        markAllRead: '/api/admin/notifications/read-all',
     },
     screenshots: {
         // Fetch a screenshot image by its record id (auth + org-ownership enforced
