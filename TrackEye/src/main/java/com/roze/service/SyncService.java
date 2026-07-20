@@ -64,10 +64,18 @@ public class SyncService {
     private volatile String apiKey;
     private volatile String deviceIdentifier;
 
+    // Real, verifiable sync health - so "registered" and "actually syncing
+    // successfully" are never confused with each other again.
+    private volatile long lastAttemptAt = 0;
+    private volatile long lastSuccessAt = 0;
+    private volatile String lastError = null;
+
     @PostConstruct
     public void start() {
         reloadConfig();
-        scheduler.scheduleAtFixedRate(this::syncSafely, 20, SYNC_INTERVAL_SECONDS, TimeUnit.SECONDS);
+        // First attempt after 5s (not 20s) so a freshly-registered device gives
+        // fast, visible feedback on the setup page instead of a long silent wait.
+        scheduler.scheduleAtFixedRate(this::syncSafely, 5, SYNC_INTERVAL_SECONDS, TimeUnit.SECONDS);
         log.info("Sync service started (every {}s). Registered: {}", SYNC_INTERVAL_SECONDS, isRegistered());
     }
 
@@ -95,6 +103,7 @@ public class SyncService {
     }
 
     private void syncSafely() {
+        lastAttemptAt = System.currentTimeMillis();
         try {
             if (!isRegistered()) {
                 log.debug("Device not registered yet - skipping sync");
@@ -104,10 +113,21 @@ public class SyncService {
             syncAfk();
             syncBrowser();
             syncScreenshots();
+            lastSuccessAt = System.currentTimeMillis();
+            lastError = null;
         } catch (Exception e) {
+            lastError = e.getClass().getSimpleName() + ": " + e.getMessage();
             log.error("Sync cycle failed: {}", e.getMessage());
         }
     }
+
+    /** Backs GET /api/setup/status so the setup page shows the TRUTH, not a guess. */
+    public SyncHealth health() {
+        return new SyncHealth(isRegistered(), lastAttemptAt, lastSuccessAt, lastError, repository.countUnsynced());
+    }
+
+    public record SyncHealth(boolean registered, long lastAttemptAt, long lastSuccessAt,
+                              String lastError, long unsyncedRows) {}
 
     private void syncActivities() throws Exception {
         List<ActivitySession> rows = repository.getUnsyncedActivities(BATCH);

@@ -560,6 +560,21 @@ private final AppConfig config;
         }
     }
 
+    /** Total rows across all local tables still waiting to be uploaded. */
+    public long countUnsynced() {
+        long total = 0;
+        String[] tables = {"activity_sessions", "afk_sessions", "screenshots", "browser_activities"};
+        for (String table : tables) {
+            try (Statement stmt = connection.createStatement();
+                 ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM " + table + " WHERE synced = 0")) {
+                if (rs.next()) total += rs.getLong(1);
+            } catch (SQLException e) {
+                log.warn("Could not count unsynced rows in {}: {}", table, e.getMessage());
+            }
+        }
+        return total;
+    }
+
     // ---- existing local-dashboard reads (unchanged) ------------------------
 
     public List<ActivitySession> getActivitySessions(long fromTime, long toTime) {

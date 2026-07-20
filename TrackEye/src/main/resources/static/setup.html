@@ -63,9 +63,12 @@
   <h1>Connect this computer</h1>
   <p class="sub">Link this machine to your TrackEye organization.</p>
 
-  <div class="status">
-    <span class="dot" id="dot"></span>
-    <span id="statusText">Checking status…</span>
+  <div class="status" style="flex-direction: column; align-items: flex-start; gap: 6px;">
+    <div style="display:flex; align-items:center; gap:8px;">
+      <span class="dot" id="dot"></span>
+      <span id="statusText">Checking status…</span>
+    </div>
+    <div id="detailText" style="font-size:12px; color:var(--muted); padding-left:16px;"></div>
   </div>
 
   <div id="form">
@@ -88,16 +91,22 @@
 
 <script>
   const $ = (id) => document.getElementById(id);
-  const dot = $('dot'), statusText = $('statusText'), msg = $('msg'), form = $('form');
+  const dot = $('dot'), statusText = $('statusText'), detailText = $('detailText'), msg = $('msg'), form = $('form');
 
   function setMsg(text, kind) {
     msg.textContent = text;
     msg.className = 'msg ' + kind;
   }
 
+  function timeAgo(ts) {
+    if (!ts) return 'never';
+    const s = Math.floor((Date.now() - ts) / 1000);
+    if (s < 60) return s + 's ago';
+    if (s < 3600) return Math.floor(s / 60) + 'm ago';
+    return Math.floor(s / 3600) + 'h ago';
+  }
+
   function showRegistered() {
-    dot.className = 'dot on';
-    statusText.textContent = 'Connected — syncing is active';
     form.style.display = 'none';
   }
 
@@ -105,15 +114,37 @@
     try {
       const r = await fetch('/api/setup/status');
       const d = await r.json();
-      if (d.registered) {
-        showRegistered();
-      } else {
+
+      if (!d.registered) {
         dot.className = 'dot off';
         statusText.textContent = 'Not connected';
+        detailText.textContent = '';
+        return;
+      }
+      showRegistered();
+
+      // This is the truthful part: registration alone does NOT mean sync is
+      // working. We show the real last-success time and any real error.
+      const hasSynced = d.lastSuccessAt > 0;
+      const recentError = d.lastError && d.lastError.length > 0;
+
+      if (recentError && (!hasSynced || d.lastAttemptAt > d.lastSuccessAt)) {
+        dot.className = 'dot off';
+        statusText.textContent = 'Connected, but syncing is failing';
+        detailText.textContent = 'Last error: ' + d.lastError + ' · ' + d.unsyncedRows + ' rows waiting to upload';
+      } else if (hasSynced) {
+        dot.className = 'dot on';
+        statusText.textContent = 'Connected — last synced ' + timeAgo(d.lastSuccessAt);
+        detailText.textContent = d.unsyncedRows + ' row(s) waiting to upload';
+      } else {
+        dot.className = 'dot';
+        statusText.textContent = 'Connected — waiting for first sync…';
+        detailText.textContent = d.unsyncedRows + ' row(s) queued locally';
       }
     } catch {
       dot.className = 'dot off';
       statusText.textContent = 'Agent not reachable';
+      detailText.textContent = '';
     }
   }
 
@@ -159,6 +190,7 @@
   );
 
   checkStatus();
+  setInterval(checkStatus, 5000);
 </script>
 </body>
 </html>

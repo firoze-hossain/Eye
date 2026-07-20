@@ -32,7 +32,14 @@ public class SetupController {
 
     @GetMapping("/status")
     public ResponseEntity<Map<String, Object>> status() {
-        return ResponseEntity.ok(Map.of("registered", syncService.isRegistered()));
+        SyncService.SyncHealth h = syncService.health();
+        return ResponseEntity.ok(Map.of(
+                "registered", h.registered(),
+                "lastAttemptAt", h.lastAttemptAt(),
+                "lastSuccessAt", h.lastSuccessAt(),
+                "lastError", h.lastError() == null ? "" : h.lastError(),
+                "unsyncedRows", h.unsyncedRows()
+        ));
     }
 
     @PostMapping("/register")
