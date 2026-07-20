@@ -9,6 +9,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Map;
+
 @Slf4j
 @RestController
 @RequestMapping("/api")
@@ -32,10 +34,23 @@ public class PublicController {
     }
 
     @PostMapping("/public/register-device")
-    public ResponseEntity<RegistrationResponse> registerDevice(@Valid @RequestBody DeviceRegistrationRequest request) {
+    public ResponseEntity<?> registerDevice(@Valid @RequestBody DeviceRegistrationRequest request) {
         log.info("Device registration request for email: {}", request.getEmail());
-        RegistrationResponse response = userService.registerDevice(request);
-        return ResponseEntity.ok(response);
+        try {
+            RegistrationResponse response = userService.registerDevice(request);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            // FIX: this used to have no try/catch, so any failure (wrong token
+            // type, expired token, decrypt failure, user not found) propagated
+            // as a raw exception -> Spring's default handler -> a generic,
+            // useless "500 Internal Server Error" with no message. The agent
+            // could only ever show "Server error: 500 - {...}" with nothing
+            // actionable in it. Now the real reason reaches the person trying
+            // to register.
+            log.warn("Device registration failed: {}", e.getMessage());
+            return ResponseEntity.status(400).body(Map.of(
+                    "error", e.getMessage() != null ? e.getMessage() : "Registration failed"));
+        }
     }
 
     @GetMapping("/public/verify-invite")

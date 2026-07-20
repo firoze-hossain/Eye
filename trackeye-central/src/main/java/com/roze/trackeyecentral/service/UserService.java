@@ -39,12 +39,32 @@ public class UserService {
         // Validate registration token
         String decryptedToken = cryptoService.decrypt(request.getRegistrationToken());
         String[] parts = decryptedToken.split(":");
+
+        // FIX: an employee INVITE token (format "invite:<userId>:<orgId>:<ts>",
+        // see generateInviteToken) is a different thing from a DEVICE
+        // registration token (format "<userId>:<orgId>:<ts>", see
+        // DeviceTokenController / registerOrganization). Pasting the former into
+        // the desktop agent's setup page used to crash with a raw
+        // NumberFormatException -> opaque 500, because parts[0] was literally
+        // the word "invite", not a user id. Detect it and say so plainly.
+        if (parts.length > 0 && "invite".equalsIgnoreCase(parts[0])) {
+            throw new RuntimeException(
+                "This is an employee invite token, not a device registration token. " +
+                "Generate a device token instead (Settings > Connect a computer, or " +
+                "Employees > an employee's device-token action) and use that in setup.html.");
+        }
         if (parts.length < 2) {
             throw new RuntimeException("Invalid registration token");
         }
-        
-        Long userId = Long.parseLong(parts[0]);
-        Long orgId = Long.parseLong(parts[1]);
+
+        Long userId;
+        Long orgId;
+        try {
+            userId = Long.parseLong(parts[0]);
+            orgId = Long.parseLong(parts[1]);
+        } catch (NumberFormatException e) {
+            throw new RuntimeException("Invalid registration token - it may be expired, corrupted, or the wrong kind of token");
+        }
         
         // Find user
         User user = userRepository.findById(userId)
