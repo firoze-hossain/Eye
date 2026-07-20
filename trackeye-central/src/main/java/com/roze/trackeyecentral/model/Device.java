@@ -39,7 +39,13 @@ public class Device {
     
     @Column(name = "is_active")
     private Boolean isActive = true;
-    
+
+    // Admin/manager can temporarily pause a device without revoking it - the
+    // API key stays valid, so resuming needs no new token. Distinct from
+    // isActive=false (a hard revoke, which also clears the api key).
+    @Column(name = "paused")
+    private Boolean paused = false;
+
     @Column(name = "created_at", nullable = false)
     private Long createdAt;
 }

@@ -1,10 +1,10 @@
 // src/components/employees/EmployeeTable.tsx
 'use client';
 
-import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { MoreVertical, UserCheck, UserX, Eye } from 'lucide-react';
+import { UserCheck, UserX, Eye } from 'lucide-react';
 import Card from '../ui/Card';
+import ActionMenu from '../ui/ActionMenu';
 import toast from 'react-hot-toast';
 import { apiClient, API } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
@@ -18,7 +18,6 @@ export default function EmployeeTable({ employees, onRefresh }: EmployeeTablePro
     const router = useRouter();
     const { user } = useAuth();
     const isAdmin = user?.role === 'admin';
-    const [openMenu, setOpenMenu] = useState<number | null>(null);
 
     // Anyone with role 'supervisor' can be picked as a manager for another employee.
     const supervisors = employees.filter((e) => e.role === 'supervisor' || e.role === 'admin');
@@ -123,53 +122,24 @@ export default function EmployeeTable({ employees, onRefresh }: EmployeeTablePro
                   </span>
                             </td>
                             <td className="py-3 px-4 text-dark-600">{formatDate(employee.createdAt)}</td>
-                            <td className="py-3 px-4 text-right relative">
-                                <button
-                                    onClick={() => setOpenMenu(openMenu === employee.id ? null : employee.id)}
-                                    className="p-2 hover:bg-dark-100 rounded-lg"
-                                >
-                                    <MoreVertical className="w-4 h-4 text-dark-500" />
-                                </button>
-
-                                {openMenu === employee.id && (
-                                    <>
-                                        <div
-                                            className="fixed inset-0 z-10"
-                                            onClick={() => setOpenMenu(null)}
-                                        />
-                                        <div className="absolute right-4 mt-2 w-48 bg-white rounded-lg shadow-lg border border-dark-200 z-20">
-                                            <button
-                                                onClick={() => {
-                                                    setOpenMenu(null);
-                                                    router.push(`/employees/${employee.id}`);
-                                                }}
-                                                className="w-full flex items-center gap-3 px-4 py-2 text-sm text-dark-700 hover:bg-dark-50"
-                                            >
-                                                <Eye className="w-4 h-4" />
-                                                View Details
-                                            </button>
-                                            <button
-                                                onClick={() => {
-                                                    setOpenMenu(null);
-                                                    handleStatusChange(employee.id, employee.status);
-                                                }}
-                                                className="w-full flex items-center gap-3 px-4 py-2 text-sm text-dark-700 hover:bg-dark-50"
-                                            >
-                                                {employee.status === 'active' ? (
-                                                    <>
-                                                        <UserX className="w-4 h-4" />
-                                                        Deactivate
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        <UserCheck className="w-4 h-4" />
-                                                        Activate
-                                                    </>
-                                                )}
-                                            </button>
-                                        </div>
-                                    </>
-                                )}
+                            <td className="py-3 px-4 text-right">
+                                <ActionMenu
+                                    items={[
+                                        {
+                                            label: 'View Details',
+                                            icon: <Eye className="w-4 h-4" />,
+                                            onClick: () => router.push(`/employees/${employee.id}`),
+                                        },
+                                        {
+                                            label: employee.status === 'active' ? 'Deactivate' : 'Activate',
+                                            icon: employee.status === 'active'
+                                                ? <UserX className="w-4 h-4" />
+                                                : <UserCheck className="w-4 h-4" />,
+                                            danger: employee.status === 'active',
+                                            onClick: () => handleStatusChange(employee.id, employee.status),
+                                        },
+                                    ]}
+                                />
                             </td>
                         </tr>
                     ))}

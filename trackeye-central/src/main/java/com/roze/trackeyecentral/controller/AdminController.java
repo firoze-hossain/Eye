@@ -2,6 +2,8 @@
 package com.roze.trackeyecentral.controller;
 
 import com.roze.trackeyecentral.dto.*;
+import com.roze.trackeyecentral.model.Device;
+import com.roze.trackeyecentral.repository.DeviceRepository;
 import com.roze.trackeyecentral.service.OrganizationService;
 import com.roze.trackeyecentral.service.ReportService;
 import com.roze.trackeyecentral.service.UserService;
@@ -23,6 +25,7 @@ public class AdminController {
 
     private final OrganizationService organizationService;
     private final UserService userService;
+    private final DeviceRepository deviceRepository;
     private final ReportService reportService;
 
     /**
@@ -197,6 +200,45 @@ public class AdminController {
         
         userService.revokeDevice(organizationId, deviceId);
         return ResponseEntity.ok().build();
+    }
+
+    /**
+     * Pause a device's syncing (reversible - no new registration token needed
+     * to resume). A supervisor may only pause/resume devices belonging to
+     * their own team; an admin may pause any device in the organization,
+     * including their own.
+     */
+    @PostMapping("/devices/{deviceId}/pause")
+    public ResponseEntity<?> pauseDevice(
+            @RequestAttribute Long organizationId,
+            @RequestAttribute("userId") Long callerUserId,
+            @RequestAttribute String role,
+            @PathVariable Long deviceId) {
+        var guard = assertDeviceVisible(organizationId, callerUserId, role, deviceId);
+        if (guard != null) return guard;
+        userService.pauseDevice(organizationId, deviceId);
+        return ResponseEntity.ok(Map.of("success", true));
+    }
+
+    @PostMapping("/devices/{deviceId}/resume")
+    public ResponseEntity<?> resumeDevice(
+            @RequestAttribute Long organizationId,
+            @RequestAttribute("userId") Long callerUserId,
+            @RequestAttribute String role,
+            @PathVariable Long deviceId) {
+        var guard = assertDeviceVisible(organizationId, callerUserId, role, deviceId);
+        if (guard != null) return guard;
+        userService.resumeDevice(organizationId, deviceId);
+        return ResponseEntity.ok(Map.of("success", true));
+    }
+
+    private ResponseEntity<?> assertDeviceVisible(Long organizationId, Long callerUserId, String role, Long deviceId) {
+        Device device = deviceRepository.findById(deviceId).orElse(null);
+        if (device == null) return ResponseEntity.notFound().build();
+        if (!userService.canView(organizationId, callerUserId, role, device.getUserId())) {
+            return ResponseEntity.status(403).body(Map.of("error", "Not visible to your role"));
+        }
+        return null;
     }
 
 }

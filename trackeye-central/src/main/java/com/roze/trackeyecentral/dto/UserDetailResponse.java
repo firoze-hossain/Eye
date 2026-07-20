@@ -33,6 +33,7 @@ public class UserDetailResponse {
         private String osType;
         private Long lastSeenAt;
         private Boolean isActive;
+        private Boolean paused;
         private Long createdAt;
     }
 }

@@ -92,6 +92,14 @@ public class ApiKeyService {
                 return ApiKeyValidationResult.invalid("Device is deactivated");
             }
 
+            // Paused (reversible, no new token needed to resume) vs deactivated
+            // (revoked, requires re-registration) are deliberately different
+            // messages - the desktop agent uses this exact text to decide
+            // whether to clear its stored credentials or just wait quietly.
+            if (Boolean.TRUE.equals(device.getPaused())) {
+                return ApiKeyValidationResult.invalid("Device is paused");
+            }
+
             // Get user
             User user = userRepository.findById(device.getUserId()).orElse(null);
             if (user == null) {

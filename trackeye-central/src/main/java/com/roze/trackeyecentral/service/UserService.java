@@ -327,6 +327,33 @@ public class UserService {
         
         log.info("Revoked device: {} for user: {}", device.getDeviceName(), user.getEmail());
     }
+
+    /** Reversible pause: sync is blocked, but the api key stays valid so resuming needs no new token. */
+    @Transactional
+    public void pauseDevice(Long organizationId, Long deviceId) {
+        Device device = deviceRepository.findById(deviceId)
+            .orElseThrow(() -> new RuntimeException("Device not found"));
+        User user = userRepository.findById(device.getUserId()).orElse(null);
+        if (user == null || !user.getOrganizationId().equals(organizationId)) {
+            throw new RuntimeException("Device does not belong to this organization");
+        }
+        device.setPaused(true);
+        deviceRepository.save(device);
+        log.info("Paused device: {} for user: {}", device.getDeviceName(), user.getEmail());
+    }
+
+    @Transactional
+    public void resumeDevice(Long organizationId, Long deviceId) {
+        Device device = deviceRepository.findById(deviceId)
+            .orElseThrow(() -> new RuntimeException("Device not found"));
+        User user = userRepository.findById(device.getUserId()).orElse(null);
+        if (user == null || !user.getOrganizationId().equals(organizationId)) {
+            throw new RuntimeException("Device does not belong to this organization");
+        }
+        device.setPaused(false);
+        deviceRepository.save(device);
+        log.info("Resumed device: {} for user: {}", device.getDeviceName(), user.getEmail());
+    }
     
     private UserResponse toUserResponse(User user) {
         UserResponse response = new UserResponse();
@@ -349,6 +376,7 @@ public class UserService {
         response.setOsType(device.getOsType());
         response.setLastSeenAt(device.getLastSeenAt());
         response.setIsActive(device.getIsActive());
+        response.setPaused(device.getPaused());
         response.setCreatedAt(device.getCreatedAt());
         return response;
     }
