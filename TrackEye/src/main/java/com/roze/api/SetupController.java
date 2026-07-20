@@ -61,7 +61,8 @@ public class SetupController {
         }
 
         return ResponseEntity.status(400).body(Map.of(
-                "success", false, "message", result.getMessage()));
+                "success", false,
+                "message", result.getMessage() != null ? result.getMessage() : "Registration failed for an unknown reason - check the agent log"));
     }
 
     @lombok.Data

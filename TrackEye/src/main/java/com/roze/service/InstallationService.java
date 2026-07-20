@@ -72,8 +72,19 @@ public class InstallationService {
             }
 
         } catch (Exception e) {
-            log.error("Registration error: {}", e.getMessage());
-            return RegistrationResult.failure(e.getMessage());
+            // FIX: e.getMessage() can be null (some exceptions - notably a bare
+            // NullPointerException with no helpful-NPE message - carry no text
+            // at all). That null was being passed all the way to Map.of(), which
+            // throws on any null value, crashing the WHOLE request with an
+            // opaque 500 instead of showing the real problem. Also logging only
+            // the message (not the exception itself) hid the stack trace, so
+            // there was no way to tell what actually went wrong.
+            log.error("Registration error", e);
+            String message = e.getMessage();
+            if (message == null || message.isBlank()) {
+                message = e.getClass().getSimpleName() + " (see agent log for the full stack trace)";
+            }
+            return RegistrationResult.failure(message);
         }
     }
 
