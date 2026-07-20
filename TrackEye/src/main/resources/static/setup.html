@@ -117,8 +117,14 @@
 
       if (!d.registered) {
         dot.className = 'dot off';
-        statusText.textContent = 'Not connected';
-        detailText.textContent = '';
+        form.style.display = ''; // re-show: registration may have just been invalidated
+        if (d.lastError && d.lastError.length > 0) {
+          statusText.textContent = 'Registration was cleared by the server';
+          detailText.textContent = d.lastError + ' — enter a fresh token below.';
+        } else {
+          statusText.textContent = 'Not connected';
+          detailText.textContent = '';
+        }
         return;
       }
       showRegistered();

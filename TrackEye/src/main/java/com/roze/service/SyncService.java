@@ -232,6 +232,7 @@ public class SyncService {
         if (resp.statusCode() == 200) return true;
 
         log.warn("POST {} -> {} : {}", path, resp.statusCode(), truncate(resp.body()));
+        if (resp.statusCode() == 401) invalidateStaleRegistration(resp.body());
         return false;
     }
 
@@ -269,6 +270,7 @@ public class SyncService {
             return true;
         }
         log.warn("Screenshot upload -> {} : {}", resp.statusCode(), truncate(resp.body()));
+        if (resp.statusCode() == 401) invalidateStaleRegistration(resp.body());
         return false;
     }
 
@@ -276,6 +278,43 @@ public class SyncService {
         w.append("--").append(boundary).append("\r\n");
         w.append("Content-Disposition: form-data; name=\"").append(name).append("\"\r\n\r\n");
         w.append(value).append("\r\n");
+    }
+
+    /**
+     * Every 401 from these sync endpoints means the server considers this
+     * device's credentials invalid (missing/expired/deactivated/deleted device,
+     * or - most common in practice - the local database was reset/rebuilt after
+     * this device last registered, so the device row it remembers no longer
+     * exists). Before this fix, the agent would retry FOREVER with the same
+     * dead credentials, and /api/setup/status would keep reporting
+     * registered=true, hiding the setup form and leaving no way to fix it short
+     * of manually deleting the config file. Now it clears the stale api-key +
+     * device-id itself, isRegistered() flips to false, and the setup page shows
+     * the form again so a fresh token can be entered - no manual file surgery.
+     */
+    private synchronized void invalidateStaleRegistration(String serverErrorBody) {
+        if (apiKey == null && deviceIdentifier == null) return; // already cleared
+        log.warn("Server rejected this device's credentials ({}). Clearing local registration - " +
+                "open http://localhost:8765/setup.html to register again.", truncate(serverErrorBody));
+
+        this.apiKey = null;
+        this.deviceIdentifier = null;
+        this.lastError = "Registration invalidated by server: " + truncate(serverErrorBody);
+
+        try {
+            Properties p = new Properties();
+            if (Files.exists(CONFIG_FILE)) {
+                try (var in = Files.newInputStream(CONFIG_FILE)) { p.load(in); }
+            }
+            p.remove("trackeye.client.api-key");
+            p.remove("trackeye.client.device-id");
+            p.setProperty("trackeye.client.last-registration-error", truncate(serverErrorBody));
+            try (var out = Files.newOutputStream(CONFIG_FILE)) {
+                p.store(out, "TrackEye Client Configuration");
+            }
+        } catch (Exception e) {
+            log.warn("Could not persist cleared registration: {}", e.getMessage());
+        }
     }
 
     private static String trimSlash(String url) {
