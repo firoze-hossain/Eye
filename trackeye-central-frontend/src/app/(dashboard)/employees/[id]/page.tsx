@@ -10,6 +10,7 @@ import LoadingSpinner from '@/components/common/LoadingSpinner';
 import AuthenticatedImage from '@/components/common/AuthenticatedImage';
 import WatchLiveModal from '@/components/employees/WatchLiveModal';
 import { apiClient, API } from '@/lib/api';
+import { useAuth } from '@/context/AuthContext';
 import toast from 'react-hot-toast';
 
 interface DeviceRow {
@@ -66,6 +67,8 @@ export default function EmployeeDetailsPage() {
     const userId = Number(params.id);
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
     const [watching, setWatching] = useState<DeviceRow | null>(null);
+    const { user: caller } = useAuth();
+    const canManageDevices = caller?.role === 'admin' || caller?.role === 'supervisor';
     const queryClient = useQueryClient();
 
     const togglePause = async (deviceId: number, pause: boolean) => {
@@ -74,7 +77,7 @@ export default function EmployeeDetailsPage() {
             toast.success(pause ? 'Device syncing stopped' : 'Device syncing resumed');
             queryClient.invalidateQueries(['employee', userId]);
         } catch (e: any) {
-            toast.error(e.response?.data?.error || 'Could not update device');
+            toast.error(e.friendlyMessage || e.response?.data?.error || 'Could not update device');
         }
     };
 
@@ -179,7 +182,7 @@ export default function EmployeeDetailsPage() {
                                             {d.lastSeenAt ? `Seen ${new Date(d.lastSeenAt).toLocaleString()}` : 'Never seen'}
                                         </p>
                                     </div>
-                                    {d.isActive && !d.paused && (
+                                    {canManageDevices && d.isActive && !d.paused && (
                                         <>
                                             <button
                                                 onClick={() => setWatching(d)}
@@ -195,7 +198,7 @@ export default function EmployeeDetailsPage() {
                                             </button>
                                         </>
                                     )}
-                                    {d.isActive && d.paused && (
+                                    {canManageDevices && d.isActive && d.paused && (
                                         <button
                                             onClick={() => togglePause(d.id, false)}
                                             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-green-600 text-white hover:bg-green-700"

@@ -149,6 +149,19 @@ class ApiClient {
                         window.location.href = '/login';
                     });
                 }
+
+                // No `error.response` at all means the request never got a real
+                // reply - almost always a CORS rejection or the server being
+                // unreachable, NOT a business-logic error. Without this, these
+                // show up as a generic, misleading "Could not update X" with no
+                // clue why. Attach a clear reason so callers can surface it.
+                if (!error.response) {
+                    error.friendlyMessage =
+                        'Could not reach the server. If you are viewing this dashboard from ' +
+                        'a different address than usual, add it to app.frontend-origins on the ' +
+                        'server (CORS) - otherwise check your network connection.';
+                }
+
                 return Promise.reject(error);
             }
         );

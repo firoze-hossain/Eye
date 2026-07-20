@@ -68,7 +68,7 @@ public class WatchController {
             @RequestAttribute String role,
             @PathVariable Long deviceId) {
         Device device = deviceRepository.findById(deviceId).orElse(null);
-        if (device == null || !userService.canView(organizationId, callerUserId, role, device.getUserId())) {
+        if (device == null || !userService.canManage(organizationId, callerUserId, role, device.getUserId())) {
             return ResponseEntity.status(403).build();
         }
         byte[] frame = watchService.latestFrame(deviceId);
@@ -79,7 +79,7 @@ public class WatchController {
     private ResponseEntity<?> assertVisible(Long organizationId, Long callerUserId, String role, Long deviceId) {
         Device device = deviceRepository.findById(deviceId).orElse(null);
         if (device == null) return ResponseEntity.notFound().build();
-        if (!userService.canView(organizationId, callerUserId, role, device.getUserId())) {
+        if (!userService.canManage(organizationId, callerUserId, role, device.getUserId())) {
             return ResponseEntity.status(403).body(Map.of("error", "Not visible to your role"));
         }
         return null;

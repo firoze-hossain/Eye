@@ -139,6 +139,23 @@ public class UserService {
                 && callerUserId.equals(target.getManagerId());
     }
 
+    /**
+     * Stricter than canView(): for MANAGEMENT actions (pause/resume/watch a
+     * device) - never allows a plain employee to act on their own record, even
+     * though canView() intentionally lets them read their own activity for
+     * transparency. Only an admin, or the employee's own supervisor, may
+     * pause/resume/watch a device.
+     */
+    public boolean canManage(Long organizationId, Long callerUserId, String callerRole, Long targetUserId) {
+        if ("admin".equalsIgnoreCase(callerRole)) return true;
+        if (!"supervisor".equalsIgnoreCase(callerRole)) return false;
+        if (callerUserId.equals(targetUserId)) return true; // a supervisor may manage their own device
+        User target = userRepository.findById(targetUserId).orElse(null);
+        return target != null
+                && organizationId.equals(target.getOrganizationId())
+                && callerUserId.equals(target.getManagerId());
+    }
+
     public void assignManager(Long organizationId, Long employeeId, Long managerId) {
         User employee = userRepository.findById(employeeId)
             .orElseThrow(() -> new RuntimeException("User not found"));
