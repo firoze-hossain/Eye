@@ -66,6 +66,14 @@ const handler = NextAuth({
         strategy: 'jwt',
         maxAge: 30 * 24 * 60 * 60, // 30 days
     },
+    // FIX: without this, NextAuth strictly compares the incoming request's
+    // host against NEXTAUTH_URL. This app is routinely opened from more than
+    // one address (localhost:3000 on this machine, a LAN IP from another
+    // device) - exactly the setup documented in .env.local.example. On a host
+    // that doesn't match NEXTAUTH_URL, session/cookie handling can misbehave
+    // in ways that look exactly like "logged out on reload." trustHost tells
+    // NextAuth to trust the actual request host instead.
+    trustHost: true,
     secret: process.env.NEXTAUTH_SECRET,
 });
 

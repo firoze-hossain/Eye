@@ -140,12 +140,18 @@ class ApiClient {
             (response) => response,
             (error) => {
                 if (error.response?.status === 401 && typeof window !== 'undefined') {
-                    // Backend token rejected/expired. Clear the NextAuth session cookie
-                    // too (it lives 30 days, the backend token only 12h) so we don't
-                    // loop back into a dead session, then bounce to login.
-                    import('next-auth/react').then(({ signOut }) =>
-                        signOut({ callbackUrl: '/login' })
-                    ).catch(() => {
+                    // FIX: don't blindly sign out on the first 401 - a request
+                    // fired the instant a page reloads can occasionally race
+                    // ahead of the session cookie being fully readable, and
+                    // this would kill a perfectly valid session over a
+                    // transient blip. Re-check getSession() itself first;
+                    // only sign out if it agrees there's truly nothing there.
+                    import('next-auth/react').then(async ({ getSession, signOut }) => {
+                        const stillHasSession = await getSession();
+                        if (!stillHasSession?.accessToken) {
+                            signOut({ callbackUrl: '/login' });
+                        }
+                    }).catch(() => {
                         window.location.href = '/login';
                     });
                 }
