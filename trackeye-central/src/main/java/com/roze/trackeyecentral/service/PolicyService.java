@@ -81,13 +81,26 @@ public class PolicyService {
 
     /** Check a foreground app/process against the org's rules. */
     @Transactional
+    /**
+     * Check a foreground app/process (and its window title) against the
+     * org's rules. Checking the window title matters because it's yet
+     * another signal that keeps working in Private/Incognito windows -
+     * complementary to AccessibilityUrlMonitorService's address-bar reading.
+     */
     public void checkAppActivity(Long organizationId, Long userId, Long deviceId,
-                                  String appName, String processName) {
+                                  String appName, String processName, String windowTitle) {
         String haystack = ((appName == null ? "" : appName) + " " + (processName == null ? "" : processName)).toLowerCase();
+        String haystackTitle = windowTitle == null ? "" : windowTitle.toLowerCase();
 
         for (PolicyRule rule : activeRules(organizationId)) {
-            if ("APP_NAME".equals(rule.getMatchType()) && haystack.contains(rule.getPattern())) {
-                recordViolation(organizationId, userId, deviceId, rule, appName);
+            boolean matched = switch (rule.getMatchType()) {
+                case "APP_NAME" -> haystack.contains(rule.getPattern());
+                case "WINDOW_TITLE_KEYWORD" -> haystackTitle.contains(rule.getPattern());
+                default -> false;
+            };
+            if (matched) {
+                String matchedValue = "APP_NAME".equals(rule.getMatchType()) ? appName : windowTitle;
+                recordViolation(organizationId, userId, deviceId, rule, matchedValue);
             }
         }
     }

@@ -263,7 +263,7 @@ public class DataSyncService {
             var owner = ownerOpt.get();
             for (ActivitySyncRequest a : activities) {
                 policyService.checkAppActivity(owner.organizationId(), owner.userId(), deviceId,
-                        a.getAppName(), a.getProcessName());
+                        a.getAppName(), a.getProcessName(), a.getWindowTitle());
             }
         } catch (Exception e) {
             log.warn("Policy check (apps) failed for device {}: {}", deviceId, e.getMessage());
