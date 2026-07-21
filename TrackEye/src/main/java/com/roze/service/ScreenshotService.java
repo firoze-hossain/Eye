@@ -21,6 +21,8 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
@@ -40,6 +42,12 @@ public class ScreenshotService {
     private int consecutiveFailures = 0;
     private volatile long backoffUntil = 0;
     private static final long[] BACKOFF_MINUTES = {2, 5, 15, 30, 60};
+
+    // Runs the actual Robot capture on its own thread so a blocked OS
+    // permission dialog (see capture()) can time out instead of freezing
+    // every future scheduled capture.
+    private final ExecutorService captureExecutor = Executors.newSingleThreadExecutor();
+    private static final int CAPTURE_TIMEOUT_SECONDS = 8;
 
     @PostConstruct
     public void start() {
@@ -83,19 +91,40 @@ public class ScreenshotService {
     }
     
     private void capture(String reason) {
-        // FIX: on GNOME/Wayland, java.awt.Robot's screen capture goes through
-        // xdg-desktop-portal, which shows an interactive "Share your screen?"
-        // dialog to the LOGGED-IN USER - especially right after unlocking the
-        // session, when the portal's prior grant is invalidated. Before this
-        // fix, a failed/denied/pending capture just got logged and retried on
-        // the very next interval (every 5 min) AND on every single app switch,
-        // so the employee could see a fresh permission popup nagging them
-        // repeatedly. This backs off after repeated failures instead of
-        // hammering them with prompts.
+        // FIX: on GNOME/Wayland (and similarly on macOS), Robot's screen
+        // capture can go through an OS permission portal that shows an
+        // interactive "Share your screen?" dialog - especially right after
+        // unlocking the session, when the prior grant is invalidated. Two
+        // separate problems follow from this:
+        //   1. If denied/pending, retrying on every 5-min interval AND every
+        //      app switch nags the employee with a fresh popup repeatedly.
+        //   2. Worse: the capture call can BLOCK waiting for the user to
+        //      respond to that dialog. Since this runs on the single scheduler
+        //      thread, a stuck dialog would silently freeze EVERY future
+        //      periodic/app-switch capture until someone deals with it.
+        // Fix for (1) is the backoff below. Fix for (2) is running the actual
+        // capture on its own thread with a hard timeout, so a stuck dialog
+        // can never block anything beyond this one attempt.
         if (System.currentTimeMillis() < backoffUntil) {
-            log.debug("Screenshot capture in backoff (Wayland permission likely pending/denied) - skipping");
+            log.debug("Screenshot capture in backoff (permission prompt likely pending/denied) - skipping");
             return;
         }
+
+        Future<?> future = captureExecutor.submit(() -> doCapture(reason));
+        try {
+            future.get(CAPTURE_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+        } catch (java.util.concurrent.TimeoutException e) {
+            future.cancel(true);
+            log.warn("Screenshot capture timed out after {}s - likely a pending OS permission dialog. " +
+                    "Backing off instead of retrying immediately.", CAPTURE_TIMEOUT_SECONDS);
+            registerFailure();
+        } catch (Exception e) {
+            log.error("Failed to capture screenshot", e);
+            registerFailure();
+        }
+    }
+
+    private void doCapture(String reason) {
         try {
             String windowTitle = monitor.getActiveWindowTitle();
             String processName = monitor.getActiveProcessName();
@@ -171,6 +200,7 @@ public class ScreenshotService {
     @PreDestroy
     public void stop() {
         scheduler.shutdown();
+        captureExecutor.shutdownNow();
         log.info("Screenshot service stopped");
     }
 }
