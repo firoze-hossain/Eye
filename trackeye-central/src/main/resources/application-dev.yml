@@ -193,7 +193,16 @@ trackeye:
     api-key-validity-days: 365
     jwt-secret: ${JWT_SECRET:dev-only-change-this-to-a-long-random-string}
     encryption-key: ${ENCRYPTION_KEY:dev-only-encryption-key-change-me}
-    token-validity-hours: 12
+    # FIX: this was 12h while the frontend's NextAuth session cookie lives 30
+    # days (see trackeye-central-frontend's [...nextauth]/route.ts). That gap
+    # meant: the outer session cookie was still perfectly valid, but the
+    # backend access token embedded in it went stale after 12h - so the next
+    # API call (even a background notification poll) got a 401, and the
+    # frontend's response interceptor immediately signed the user all the way
+    # out. This looked exactly like "reloading the page logs me out," even
+    # though nothing was actually wrong with their session - just a token
+    # lifetime mismatch. Aligning them removes the false trigger.
+    token-validity-hours: 720
 
   rate-limiting:
     enabled: true
