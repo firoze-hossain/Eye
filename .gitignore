@@ -5,3 +5,13 @@ trackeye-frontend/node_modules/
 .DS_Store
 dist/
 build/
+
+target/
+.idea/
+*.iml
+.vscode/
+*.swp
+data/
+*.mv.db
+*.trace.db
+*.db
