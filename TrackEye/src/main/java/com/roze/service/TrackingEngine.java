@@ -237,12 +237,14 @@ public class TrackingEngine {
      * Check if this is a system/desktop process we should skip
      */
     private boolean isSystemProcess(String processName, String windowTitle) {
-        String combined = (processName + " " + windowTitle).toLowerCase();
-        // FIX: this list only caught window managers/compositors, not the
-        // actual background daemons showing up in real logs (Xwayland itself,
-        // GNOME's file indexer, snapd, unattended-upgrades, gvfs, etc.) - none
-        // of these are things a person "uses," they're OS plumbing that
-        // happened to spike CPU or briefly own a notification window.
+        // FIX: patterns here use hyphens ("gnome-shell"), but the prettified
+        // names now coming from .desktop resolution use real spaces ("GNOME
+        // Shell") - "gnome shell".contains("gnome-shell") is FALSE, so this
+        // filter silently stopped matching ANY prettified name, letting
+        // GNOME Shell itself (and everything else on this list) show up as
+        // if it were a real, trackable app. Strip hyphens/spaces from both
+        // sides before comparing so either style matches the same way.
+        String combined = normalize(processName + " " + windowTitle);
         String[] systemPatterns = {
                 "gnome-shell", "kwin", "plasmashell", "xfwm4", "openbox",
                 "systemd", "dbus", "gdbus", "gjs", "trackeye",
@@ -256,11 +258,16 @@ public class TrackingEngine {
         };
 
         for (String pattern : systemPatterns) {
-            if (combined.contains(pattern)) {
+            if (combined.contains(normalize(pattern))) {
                 return true;
             }
         }
         return false;
+    }
+
+    /** Lowercases and strips hyphens/spaces so "gnome-shell" and "GNOME Shell" compare equal. */
+    private String normalize(String s) {
+        return s == null ? "" : s.toLowerCase().replace("-", "").replace(" ", "");
     }
 
     /**
