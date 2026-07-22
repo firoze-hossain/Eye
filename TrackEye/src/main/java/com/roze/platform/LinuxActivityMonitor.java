@@ -10,8 +10,6 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 @Slf4j
 public class LinuxActivityMonitor implements ActivityMonitor {
@@ -27,6 +25,7 @@ public class LinuxActivityMonitor implements ActivityMonitor {
     // whether the app came from apt, snap, flatpak, or a tar.gz you unpacked
     // yourself, since all of those register a .desktop entry somewhere.
     private final Map<String, String> desktopNameByKey = new ConcurrentHashMap<>();
+    private final java.util.Set<String> knownPrettyNames = ConcurrentHashMap.newKeySet();
     private volatile long desktopCacheBuiltAt = 0;
     private static final long DESKTOP_CACHE_TTL_MS = 5 * 60_000; // rescan periodically - catches newly installed apps
     private static final String[] DESKTOP_DIRS = {
@@ -131,13 +130,11 @@ public class LinuxActivityMonitor implements ActivityMonitor {
     }
 
     private String getActiveWindowTitleWayland() {
-        // On Wayland, we need to use alternative methods
         try {
-            // Try to get active window via DBus (works on GNOME Wayland)
-            String title = getActiveWindowViaDBus();
-            if (title != null && !title.isEmpty()) {
-                log.debug("Window title (DBus): {}", title);
-                return title;
+            FocusedWindowInfo info = getFocusedWindowInfoCached();
+            if (info != null && info.title != null && !info.title.isEmpty()) {
+                log.debug("Window title (DBus): {}", info.title);
+                return info.title;
             }
         } catch (Exception e) {
             log.trace("DBus method failed: {}", e.getMessage());
@@ -160,29 +157,87 @@ public class LinuxActivityMonitor implements ActivityMonitor {
         return "";
     }
 
-    private String getActiveWindowViaDBus() {
+    /** A single, atomic snapshot of the truly focused, user-facing window. */
+    private static class FocusedWindowInfo {
+        String title;
+        String pid;
+        String wmClass;
+    }
+
+    private volatile FocusedWindowInfo cachedFocusInfo;
+    private volatile long cachedFocusInfoAt = 0;
+    // FIX: TrackingEngine calls getActiveWindowTitle() and getActiveProcessName()
+    // as two SEPARATE calls in the same loop iteration. Each used to fire its
+    // own independent D-Bus round-trip - between those two round-trips, focus
+    // can genuinely change (e.g. Firefox briefly focusing its hidden internal
+    // "Privileged" extension-host window), producing mismatched pairs like
+    // "Window: Postman | Process: Next-server". A short-lived cache makes both
+    // calls within the same loop tick share one atomic snapshot instead.
+    private static final long FOCUS_CACHE_TTL_MS = 400;
+
+    private FocusedWindowInfo getFocusedWindowInfoCached() {
+        long now = System.currentTimeMillis();
+        if (cachedFocusInfo != null && now - cachedFocusInfoAt < FOCUS_CACHE_TTL_MS) {
+            return cachedFocusInfo;
+        }
+        FocusedWindowInfo info = queryFocusedWindowInfoViaDBus();
+        cachedFocusInfo = info;
+        cachedFocusInfoAt = now;
+        return info;
+    }
+
+    /**
+     * ONE atomic D-Bus call returning title + pid + WM_CLASS together for
+     * whatever window is genuinely focused - and only if it's a real,
+     * user-facing window (window_type 0 = Meta.WindowType.NORMAL). That type
+     * filter is what excludes things like Firefox's hidden "Privileged"
+     * extension-host window, which was being detected as "focused" before
+     * even though no person can ever actually see or use it.
+     */
+    private FocusedWindowInfo queryFocusedWindowInfoViaDBus() {
         try {
-            // GNOME Shell DBus query for active window
+            String script =
+                "(function(){"
+                + "let actors=global.get_window_actors();"
+                + "let win=null;"
+                + "for(let a of actors){"
+                + "  if(a.meta_window.has_focus() && a.meta_window.window_type===0){win=a.meta_window;break;}"
+                + "}"
+                + "if(!win) return '';"
+                + "let title=win.get_title()||'';"
+                + "let pid=win.get_pid()||0;"
+                + "let wmClass=win.get_wm_class()||'';"
+                + "return title+'\\u0001'+pid+'\\u0001'+wmClass;"
+                + "})()";
+
             ProcessBuilder pb = new ProcessBuilder("gdbus", "call",
                     "--session", "--dest", "org.gnome.Shell",
                     "--object-path", "/org/gnome/Shell",
                     "--method", "org.gnome.Shell.Eval",
-                    "global.get_window_actors().find(a => a.meta_window.has_focus())?.meta_window.get_title()");
-
+                    script);
             Process process = pb.start();
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
                 String line = reader.readLine();
-                if (line != null && line.contains("'")) {
-                    int start = line.indexOf("'");
-                    int end = line.lastIndexOf("'");
-                    if (start != -1 && end > start) {
-                        return line.substring(start + 1, end);
+                if (line != null) {
+                    // gdbus Eval returns e.g. (true, 'Title\x011234\x01WmClass')
+                    int firstQuote = line.indexOf('\'');
+                    int lastQuote = line.lastIndexOf('\'');
+                    if (firstQuote >= 0 && lastQuote > firstQuote) {
+                        String raw = line.substring(firstQuote + 1, lastQuote);
+                        String[] parts = raw.split("\u0001", -1);
+                        if (parts.length == 3 && !parts[0].isEmpty()) {
+                            FocusedWindowInfo info = new FocusedWindowInfo();
+                            info.title = parts[0];
+                            info.pid = parts[1];
+                            info.wmClass = parts[2];
+                            return info;
+                        }
                     }
                 }
             }
             process.waitFor(2, TimeUnit.SECONDS);
         } catch (Exception e) {
-            log.trace("DBus query failed: {}", e.getMessage());
+            log.trace("DBus focused-window query failed: {}", e.getMessage());
         }
         return null;
     }
@@ -304,21 +359,42 @@ public class LinuxActivityMonitor implements ActivityMonitor {
     }
 
     private String getActiveProcessNameWayland() {
-        // FIX: this used to run `ps --sort=-%cpu | head -5 | tail -1` - i.e.
-        // "whichever process happens to be the 5th-highest CPU user right
-        // now" - which has NOTHING to do with which window is actually
-        // focused. That's exactly why Xwayland (busy compositing any X11 app,
-        // including Brave) and background daemons (snapd, tracker-miner,
-        // unattended-upgrades - anything that happened to spike CPU briefly)
-        // were showing up as "active applications." Query the real focused
-        // window's PID via the same GNOME Shell DBus interface already used
-        // for the window title, then resolve that PID to its actual name.
+        // FIX: reads from the SAME atomic D-Bus snapshot used for the title
+        // (see getFocusedWindowInfoCached) instead of firing its own separate
+        // D-Bus round-trip - two independent round-trips let focus change
+        // between them, producing mismatched pairs like "Window: Postman |
+        // Process: Next-server". Also prefers WM_CLASS for name resolution -
+        // WM_CLASS is set by the app's own GUI toolkit and stays reliable
+        // regardless of packaging (snap/flatpak) or runtime (JetBrains IDEs
+        // are all "java" at the process level, but each sets a distinct
+        // WM_CLASS like "jetbrains-webstorm").
         try {
-            String pid = getFocusedWindowPidViaDBus();
-            if (pid != null && !pid.isEmpty()) {
-                String rawName = getFullProcessName(pid.trim());
-                if (rawName != null && !rawName.isEmpty()) {
-                    return prettyAppName(rawName);
+            FocusedWindowInfo info = getFocusedWindowInfoCached();
+            if (info != null) {
+                if (info.wmClass != null && !info.wmClass.isEmpty()) {
+                    String byClass = prettyAppNameFromWmClass(info.wmClass);
+                    if (byClass != null) return byClass;
+                }
+                if (info.pid != null && !info.pid.isEmpty()) {
+                    String rawName = getFullProcessName(info.pid.trim());
+                    if (rawName != null && !rawName.isEmpty()) {
+                        String pretty = prettyAppNameOrNull(rawName);
+                        if (pretty != null) return pretty;
+                    }
+                }
+                // Neither WM_CLASS nor the exec name matched a known app.
+                // Before giving up and showing a raw/technical name, check
+                // whether the window TITLE itself names a known app - this is
+                // what catches utility windows like VS Code's internal
+                // "Visual Studio Code - URL Handler" dialog, whose own
+                // WM_CLASS/PID don't resolve cleanly, but whose title clearly
+                // contains "Visual Studio Code."
+                if (info.title != null && !info.title.isEmpty()) {
+                    String byTitle = matchKnownAppNameInTitle(info.title);
+                    if (byTitle != null) return byTitle;
+                }
+                if (info.wmClass != null && !info.wmClass.isEmpty()) {
+                    return capitalizeFirst(info.wmClass);
                 }
             }
         } catch (Exception e) {
@@ -328,31 +404,6 @@ public class LinuxActivityMonitor implements ActivityMonitor {
         // (e.g. a non-GNOME Wayland compositor) - far from ideal, but still
         // better than returning nothing.
         return getActiveProcessNameWaylandLegacyFallback();
-    }
-
-    private String getFocusedWindowPidViaDBus() {
-        try {
-            ProcessBuilder pb = new ProcessBuilder("gdbus", "call",
-                    "--session", "--dest", "org.gnome.Shell",
-                    "--object-path", "/org/gnome/Shell",
-                    "--method", "org.gnome.Shell.Eval",
-                    "global.get_window_actors().find(a => a.meta_window.has_focus())?.meta_window.get_pid()");
-            Process process = pb.start();
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-                String line = reader.readLine();
-                if (line != null) {
-                    // gdbus Eval returns something like (true, '1234')
-                    Matcher m = Pattern.compile("'(\\d+)'").matcher(line);
-                    if (m.find()) {
-                        return m.group(1);
-                    }
-                }
-            }
-            process.waitFor(2, TimeUnit.SECONDS);
-        } catch (Exception e) {
-            log.trace("DBus PID query failed: {}", e.getMessage());
-        }
-        return null;
     }
 
     /**
@@ -392,6 +443,62 @@ public class LinuxActivityMonitor implements ActivityMonitor {
         ensureDesktopCacheFresh();
         String match = desktopNameByKey.get(rawProcessName.toLowerCase());
         return match != null ? match : capitalizeFirst(rawProcessName);
+    }
+
+    /** Same lookup as prettyAppName, but returns null (not a capitalized
+     *  guess) on no match, so callers can chain to a better fallback. */
+    private String prettyAppNameOrNull(String rawProcessName) {
+        if (rawProcessName == null || rawProcessName.isEmpty()) return null;
+        ensureDesktopCacheFresh();
+        return desktopNameByKey.get(rawProcessName.toLowerCase());
+    }
+
+    /**
+     * Resolves via WM_CLASS specifically, matched against each .desktop
+     * file's StartupWMClass= (already indexed into the same cache). Unlike
+     * process-name matching, this stays reliable for JVM-based apps
+     * (JetBrains IDEs all report as "java" at the process level, but each
+     * still sets its own distinct WM_CLASS) and for sandboxed/snap-confined
+     * apps where /proc/PID inspection can be unreliable. Returns null (not a
+     * fallback string) if there's no real match, so callers can still try
+     * the PID-based path as a second attempt.
+     */
+    private String prettyAppNameFromWmClass(String wmClass) {
+        if (wmClass == null || wmClass.isEmpty()) return null;
+        ensureDesktopCacheFresh();
+        String direct = desktopNameByKey.get(wmClass.toLowerCase());
+        if (direct != null) return direct;
+        // Mutter's WM_CLASS can occasionally carry "instance class" as two
+        // space-separated tokens - try the last token too.
+        String[] tokens = wmClass.trim().split("\\s+");
+        if (tokens.length > 1) {
+            return desktopNameByKey.get(tokens[tokens.length - 1].toLowerCase());
+        }
+        return null;
+    }
+
+    /**
+     * Last-chance resolution for stubborn internal utility windows (e.g. VS
+     * Code's "Visual Studio Code - URL Handler" dialog) whose own WM_CLASS
+     * and PID don't cleanly resolve to a known app, but whose visible window
+     * TITLE clearly names one. Checks the title against every app name we
+     * actually know about (collected while building the .desktop cache), and
+     * returns the longest/most specific match - so "Visual Studio Code - URL
+     * Handler" correctly resolves to "Visual Studio Code" rather than
+     * falling through to a raw, technical WM_CLASS string.
+     */
+    private String matchKnownAppNameInTitle(String title) {
+        ensureDesktopCacheFresh();
+        String lowerTitle = title.toLowerCase();
+        String best = null;
+        for (String name : knownPrettyNames) {
+            if (name.length() >= 3 && lowerTitle.contains(name.toLowerCase())) {
+                if (best == null || name.length() > best.length()) {
+                    best = name;
+                }
+            }
+        }
+        return best;
     }
 
     private void ensureDesktopCacheFresh() {
@@ -439,6 +546,7 @@ public class LinuxActivityMonitor implements ActivityMonitor {
                 if (wmClass != null) out.putIfAbsent(wmClass.toLowerCase(), name);
                 String baseFileName = f.getName().replaceFirst("\\.desktop$", "");
                 out.putIfAbsent(baseFileName.toLowerCase(), name);
+                knownPrettyNames.add(name);
             }
         } catch (Exception e) {
             log.trace("Could not parse .desktop file {}: {}", f.getName(), e.getMessage());

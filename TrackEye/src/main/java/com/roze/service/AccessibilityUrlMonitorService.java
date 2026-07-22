@@ -116,6 +116,10 @@ public class AccessibilityUrlMonitorService {
      * accessible names). Bounded depth/breadth so a large or unusual UI tree
      * can never cause a runaway traversal.
      */
+    private static final String[] KNOWN_BROWSER_APP_NAMES = {
+            "firefox", "brave", "chrome", "chromium", "edge", "opera", "vivaldi"
+    };
+
     private String findFocusedAddressBarText() {
         AtspiNative atspi = AtspiNative.INSTANCE;
         Pointer desktop = atspi.atspi_get_desktop(0);
@@ -127,6 +131,15 @@ public class AccessibilityUrlMonitorService {
                 Pointer app = getChild(desktop, i);
                 if (app == null) continue;
                 try {
+                    // FIX: this used to descend into EVERY app's accessibility
+                    // tree looking for an address bar - including apps like
+                    // Postman, snap-store, and WhatsApp Desktop that could
+                    // never have one. For snap-confined apps, that also
+                    // triggered a real AppArmor denial for every single poll
+                    // (visible as "dbind-WARNING: AT-SPI: Error in GetItems...
+                    // AppArmor policy prevents this sender"). Only descend
+                    // into apps that are actually browsers.
+                    if (!isLikelyBrowserApp(app)) continue;
                     String found = searchForFocusedAddressBar(app, 0);
                     if (found != null) return found;
                 } finally {
@@ -137,6 +150,16 @@ public class AccessibilityUrlMonitorService {
             unref(desktop);
         }
         return null;
+    }
+
+    private boolean isLikelyBrowserApp(Pointer app) {
+        String name = getName(app);
+        if (name == null) return false;
+        String lower = name.toLowerCase();
+        for (String browser : KNOWN_BROWSER_APP_NAMES) {
+            if (lower.contains(browser)) return true;
+        }
+        return false;
     }
 
     private String searchForFocusedAddressBar(Pointer node, int depth) {
