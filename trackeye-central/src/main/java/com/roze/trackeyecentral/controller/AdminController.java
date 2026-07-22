@@ -133,6 +133,27 @@ public class AdminController {
     }
 
     /**
+     * Get employee browser activity (URLs visited) for a specific date - its
+     * own section so "which sites did they visit" is easy to see clearly,
+     * separate from general app activity.
+     */
+    @GetMapping("/employees/{userId}/browser-activities")
+    public ResponseEntity<?> getEmployeeBrowserActivities(
+            @RequestAttribute Long organizationId,
+            @RequestAttribute("userId") Long callerUserId,
+            @RequestAttribute String role,
+            @PathVariable Long userId,
+            @RequestParam String date) {
+        if (!userService.canView(organizationId, callerUserId, role, userId)) {
+            return ResponseEntity.status(403).body(Map.of("error", "Not visible to your role"));
+        }
+        LocalDate localDate = LocalDate.parse(date);
+        List<BrowserActivityResponse> browserActivities = reportService.getEmployeeBrowserActivities(
+            organizationId, userId, localDate);
+        return ResponseEntity.ok(browserActivities);
+    }
+
+    /**
      * Get real-time active users
      */
     @GetMapping("/live")

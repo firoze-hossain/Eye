@@ -4,7 +4,7 @@
 import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from 'react-query';
-import { ArrowLeft, Monitor, Clock, Coffee, Camera, Activity, Eye, PauseCircle, PlayCircle } from 'lucide-react';
+import { ArrowLeft, Monitor, Clock, Coffee, Camera, Activity, Eye, PauseCircle, PlayCircle, Globe } from 'lucide-react';
 import Card from '@/components/ui/Card';
 import LoadingSpinner from '@/components/common/LoadingSpinner';
 import AuthenticatedImage from '@/components/common/AuthenticatedImage';
@@ -61,6 +61,27 @@ const fmtMin = (min: number) => {
 const fmtTime = (ts: number) =>
     new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
+/** Extracts a clean, display-friendly domain from a URL, or empty string if unusable. */
+const domainOf = (url?: string): string => {
+    if (!url) return '';
+    try {
+        const host = new URL(url).hostname;
+        return host.replace(/^www\./, '');
+    } catch {
+        return url.replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0];
+    }
+};
+
+/** Consistent color coding per browser source, so the list reads at a glance. */
+const browserBadgeStyle = (browserName?: string) => {
+    const name = (browserName || '').toLowerCase();
+    if (name.includes('brave')) return { bg: 'bg-orange-100', text: 'text-orange-700', pill: 'bg-orange-100 text-orange-700' };
+    if (name.includes('firefox')) return { bg: 'bg-amber-100', text: 'text-amber-700', pill: 'bg-amber-100 text-amber-700' };
+    if (name.includes('chrome')) return { bg: 'bg-blue-100', text: 'text-blue-700', pill: 'bg-blue-100 text-blue-700' };
+    if (name.includes('accessibility')) return { bg: 'bg-purple-100', text: 'text-purple-700', pill: 'bg-purple-100 text-purple-700' };
+    return { bg: 'bg-dark-100', text: 'text-dark-600', pill: 'bg-dark-100 text-dark-600' };
+};
+
 export default function EmployeeDetailsPage() {
     const params = useParams();
     const router = useRouter();
@@ -94,6 +115,11 @@ export default function EmployeeDetailsPage() {
     const { data: shots } = useQuery<any[]>(
         ['employee-screenshots', userId, date],
         () => apiClient.get<any[]>(API.employees.screenshots(userId, date))
+    );
+
+    const { data: browserActivity } = useQuery<any[]>(
+        ['employee-browser-activities', userId, date],
+        () => apiClient.get<any[]>(API.employees.browserActivities(userId, date))
     );
 
     if (userLoading) return <LoadingSpinner />;
@@ -296,6 +322,73 @@ export default function EmployeeDetailsPage() {
                             </div>
                         ))}
                     </div>
+                )}
+            </Card>
+
+            <Card className="p-5">
+                <h2 className="font-semibold text-dark-900 mb-4 flex items-center gap-2">
+                    <Globe className="w-4 h-4" /> Browser Activity — {date}
+                </h2>
+                {!browserActivity?.length ? (
+                    <p className="text-dark-500 text-sm">No browser activity for this date.</p>
+                ) : (
+                    <>
+                        {/* Quick summary: top sites by total time, at a glance */}
+                        <div className="flex flex-wrap gap-2 mb-4">
+                            {Object.entries(
+                                browserActivity.reduce((acc: Record<string, number>, a: any) => {
+                                    const d = domainOf(a.url);
+                                    acc[d] = (acc[d] || 0) + (a.durationMs || 0);
+                                    return acc;
+                                }, {})
+                            )
+                                .sort((a, b) => (b[1] as number) - (a[1] as number))
+                                .slice(0, 5)
+                                .map(([domain, ms]) => (
+                                    <span
+                                        key={domain}
+                                        className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full bg-dark-50 border border-dark-100 text-dark-600"
+                                    >
+                                        <span className="font-medium text-dark-800">{domain}</span>
+                                        <span className="text-dark-400">{fmtDur(ms as number)}</span>
+                                    </span>
+                                ))}
+                        </div>
+
+                        <div className="divide-y divide-dark-100 max-h-[480px] overflow-y-auto">
+                            {browserActivity.map((a: any) => {
+                                const domain = domainOf(a.url);
+                                const style = browserBadgeStyle(a.browserName);
+                                return (
+                                    <div key={a.id} className="flex items-center gap-3 py-2.5">
+                                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-none text-xs font-semibold ${style.bg} ${style.text}`}>
+                                            {domain ? domain[0].toUpperCase() : '?'}
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                            <a
+                                                href={a.url}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                title={a.url}
+                                                className="text-sm font-medium text-dark-900 hover:text-primary-600 hover:underline truncate block"
+                                            >
+                                                {domain || 'Unknown site'}
+                                            </a>
+                                            <p className="text-xs text-dark-400 truncate">{a.pageTitle || a.url || '—'}</p>
+                                        </div>
+                                        <div className="flex-none text-right">
+                                            <span className={`inline-block text-xs px-2 py-0.5 rounded-full ${style.pill}`}>
+                                                {a.browserName || 'Browser'}
+                                            </span>
+                                            <p className="text-xs text-dark-400 mt-1 whitespace-nowrap">
+                                                {fmtTime(a.startTime)} · {fmtDur(a.durationMs)}
+                                            </p>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </>
                 )}
             </Card>
 

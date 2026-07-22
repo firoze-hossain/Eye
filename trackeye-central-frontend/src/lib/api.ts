@@ -227,6 +227,7 @@ export const API = {
         details: (id: number) => `/api/admin/employees/${id}`,
         activities: (id: number, date: string) => `/api/admin/employees/${id}/activities?date=${date}`,
         screenshots: (id: number, date: string) => `/api/admin/employees/${id}/screenshots?date=${date}`,
+        browserActivities: (id: number, date: string) => `/api/admin/employees/${id}/browser-activities?date=${date}`,
         deactivate: (id: number) => `/api/admin/employees/${id}/deactivate`,
         activate: (id: number) => `/api/admin/employees/${id}/activate`,
         invite: '/api/admin/invite',

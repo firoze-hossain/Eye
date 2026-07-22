@@ -4,6 +4,7 @@ package com.roze.trackeyecentral.service;
 import com.roze.trackeyecentral.dto.*;
 import com.roze.trackeyecentral.model.Device;
 import com.roze.trackeyecentral.model.EmployeeActivity;
+import com.roze.trackeyecentral.model.EmployeeBrowserActivity;
 import com.roze.trackeyecentral.model.EmployeeScreenshot;
 import com.roze.trackeyecentral.model.User;
 import com.roze.trackeyecentral.repository.*;
@@ -221,6 +222,57 @@ public class ReportService {
         } catch (Exception e) {
             log.error("Error getting employee activities: {}", e.getMessage(), e);
             throw new RuntimeException("Failed to get employee activities", e);
+        }
+    }
+
+    /**
+     * Get employee browser activity (URLs visited) for a specific date, shown
+     * as its own section in the dashboard - distinct from general app
+     * activity, since "which sites were visited" is what admins actually
+     * want to see clearly, not buried inside a generic activity list.
+     */
+    public List<BrowserActivityResponse> getEmployeeBrowserActivities(Long organizationId, Long userId, LocalDate date) {
+        User user = userRepository.findById(userId)
+            .orElseThrow(() -> new RuntimeException("User not found"));
+
+        if (!user.getOrganizationId().equals(organizationId)) {
+            throw new RuntimeException("User does not belong to this organization");
+        }
+
+        List<Device> devices = deviceRepository.findByUserId(userId);
+        List<Long> deviceIds = devices.stream().map(Device::getId).collect(Collectors.toList());
+        if (deviceIds.isEmpty()) return new ArrayList<>();
+
+        long startOfDay = date.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli();
+        long endOfDay = date.plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli();
+
+        List<EmployeeBrowserActivity> rows = browserActivityRepository
+            .findByDeviceIdsAndTimeRange(deviceIds, startOfDay, endOfDay);
+
+        List<BrowserActivityResponse> result = new ArrayList<>();
+        for (EmployeeBrowserActivity row : rows) {
+            result.add(BrowserActivityResponse.builder()
+                .id(row.getId())
+                .browserName(row.getBrowserName())
+                .url(row.getUrl())
+                .domain(extractDomain(row.getUrl()))
+                .pageTitle(row.getPageTitle())
+                .startTime(row.getStartTime())
+                .durationMs(row.getDurationMs())
+                .build());
+        }
+        return result;
+    }
+
+    private String extractDomain(String url) {
+        if (url == null || url.isBlank()) return "";
+        try {
+            String noScheme = url.replaceFirst("^https?://", "");
+            int slash = noScheme.indexOf('/');
+            String host = slash >= 0 ? noScheme.substring(0, slash) : noScheme;
+            return host.replaceFirst("^www\\.", "");
+        } catch (Exception e) {
+            return url;
         }
     }
 
