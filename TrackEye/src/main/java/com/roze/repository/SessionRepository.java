@@ -325,7 +325,7 @@ private final AppConfig config;
     private Connection connection;
 
     @PostConstruct
-    public void init() {
+    public synchronized void init() {
         try {
             File dbDir = new File(config.getStoragePath());
             if (!dbDir.exists()) dbDir.mkdirs();
@@ -418,7 +418,7 @@ private final AppConfig config;
 
     // ---- writes -------------------------------------------------------------
 
-    public void saveActivity(ActivitySession session) {
+    public synchronized void saveActivity(ActivitySession session) {
         String sql = "INSERT INTO activity_sessions (app_name, window_title, process_name, start_time, end_time, duration_ms, synced) VALUES (?, ?, ?, ?, ?, ?, 0)";
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             ps.setString(1, session.getAppName());
@@ -433,7 +433,7 @@ private final AppConfig config;
         }
     }
 
-    public void saveAfk(AfkSession session) {
+    public synchronized void saveAfk(AfkSession session) {
         String sql = "INSERT INTO afk_sessions (start_time, end_time, duration_ms, synced) VALUES (?, ?, ?, 0)";
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             ps.setLong(1, session.getStartTime());
@@ -445,7 +445,7 @@ private final AppConfig config;
         }
     }
 
-    public void saveScreenshot(ScreenshotRecord screenshot) {
+    public synchronized void saveScreenshot(ScreenshotRecord screenshot) {
         String sql = "INSERT INTO screenshots (timestamp, file_path, window_title, process_name, synced) VALUES (?, ?, ?, ?, 0)";
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             ps.setLong(1, screenshot.getTimestamp());
@@ -458,7 +458,7 @@ private final AppConfig config;
         }
     }
 
-    public void saveBrowserActivity(BrowserActivity activity) {
+    public synchronized void saveBrowserActivity(BrowserActivity activity) {
         String sql = "INSERT INTO browser_activities (browser_name, url, page_title, start_time, end_time, duration_ms, synced) VALUES (?, ?, ?, ?, ?, ?, 0)";
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             ps.setString(1, activity.getBrowserName());
@@ -475,7 +475,7 @@ private final AppConfig config;
 
     // ---- sync reads / marks -------------------------------------------------
 
-    public List<ActivitySession> getUnsyncedActivities(int limit) {
+    public synchronized List<ActivitySession> getUnsyncedActivities(int limit) {
         List<ActivitySession> list = new ArrayList<>();
         String sql = "SELECT * FROM activity_sessions WHERE synced = 0 ORDER BY start_time ASC LIMIT ?";
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
@@ -493,7 +493,7 @@ private final AppConfig config;
         return list;
     }
 
-    public List<AfkSession> getUnsyncedAfk(int limit) {
+    public synchronized List<AfkSession> getUnsyncedAfk(int limit) {
         List<AfkSession> list = new ArrayList<>();
         String sql = "SELECT * FROM afk_sessions WHERE synced = 0 ORDER BY start_time ASC LIMIT ?";
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
@@ -509,7 +509,7 @@ private final AppConfig config;
         return list;
     }
 
-    public List<BrowserActivity> getUnsyncedBrowser(int limit) {
+    public synchronized List<BrowserActivity> getUnsyncedBrowser(int limit) {
         List<BrowserActivity> list = new ArrayList<>();
         String sql = "SELECT * FROM browser_activities WHERE synced = 0 ORDER BY start_time ASC LIMIT ?";
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
@@ -526,7 +526,7 @@ private final AppConfig config;
         return list;
     }
 
-    public List<ScreenshotRecord> getUnsyncedScreenshots(int limit) {
+    public synchronized List<ScreenshotRecord> getUnsyncedScreenshots(int limit) {
         List<ScreenshotRecord> list = new ArrayList<>();
         String sql = "SELECT * FROM screenshots WHERE synced = 0 ORDER BY timestamp ASC LIMIT ?";
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
@@ -548,7 +548,7 @@ private final AppConfig config;
     public void markBrowserSynced(List<Long> ids)    { markSynced("browser_activities", ids); }
     public void markScreenshotsSynced(List<Long> ids){ markSynced("screenshots", ids); }
 
-    private void markSynced(String table, List<Long> ids) {
+    private synchronized void markSynced(String table, List<Long> ids) {
         if (ids == null || ids.isEmpty()) return;
         String placeholders = String.join(",", Collections.nCopies(ids.size(), "?"));
         String sql = "UPDATE " + table + " SET synced = 1 WHERE id IN (" + placeholders + ")";
@@ -561,7 +561,7 @@ private final AppConfig config;
     }
 
     /** Total rows across all local tables still waiting to be uploaded. */
-    public long countUnsynced() {
+    public synchronized long countUnsynced() {
         long total = 0;
         String[] tables = {"activity_sessions", "afk_sessions", "screenshots", "browser_activities"};
         for (String table : tables) {
@@ -577,7 +577,7 @@ private final AppConfig config;
 
     // ---- existing local-dashboard reads (unchanged) ------------------------
 
-    public List<ActivitySession> getActivitySessions(long fromTime, long toTime) {
+    public synchronized List<ActivitySession> getActivitySessions(long fromTime, long toTime) {
         List<ActivitySession> sessions = new ArrayList<>();
         String sql = "SELECT * FROM activity_sessions WHERE start_time >= ? AND start_time <= ? ORDER BY start_time DESC";
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
@@ -596,7 +596,7 @@ private final AppConfig config;
         return sessions;
     }
 
-    public List<Map<String, Object>> getTopApps(long fromTime, long toTime, int limit) {
+    public synchronized List<Map<String, Object>> getTopApps(long fromTime, long toTime, int limit) {
         List<Map<String, Object>> topApps = new ArrayList<>();
         String sql = """
             SELECT app_name, SUM(duration_ms) as total_ms, COUNT(*) as session_count
@@ -622,7 +622,7 @@ private final AppConfig config;
         return topApps;
     }
 
-    public long getTotalTime(long fromTime, long toTime) {
+    public synchronized long getTotalTime(long fromTime, long toTime) {
         String sql = "SELECT COALESCE(SUM(duration_ms), 0) as total FROM activity_sessions WHERE start_time >= ? AND start_time <= ?";
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             ps.setLong(1, fromTime);
@@ -635,7 +635,7 @@ private final AppConfig config;
         return 0;
     }
 
-    public List<ScreenshotRecord> getScreenshots(long fromTime, long toTime) {
+    public synchronized List<ScreenshotRecord> getScreenshots(long fromTime, long toTime) {
         List<ScreenshotRecord> screenshots = new ArrayList<>();
         String sql = "SELECT * FROM screenshots WHERE timestamp >= ? AND timestamp <= ? ORDER BY timestamp DESC";
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
@@ -653,7 +653,7 @@ private final AppConfig config;
         return screenshots;
     }
 
-    public List<BrowserActivity> getBrowserActivities(long fromTime, long toTime) {
+    public synchronized List<BrowserActivity> getBrowserActivities(long fromTime, long toTime) {
         List<BrowserActivity> activities = new ArrayList<>();
         String sql = "SELECT * FROM browser_activities WHERE start_time >= ? AND start_time <= ? ORDER BY start_time DESC";
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
@@ -672,7 +672,7 @@ private final AppConfig config;
         return activities;
     }
 
-    public List<Map<String, Object>> getTopWebsites(long fromTime, long toTime, int limit) {
+    public synchronized List<Map<String, Object>> getTopWebsites(long fromTime, long toTime, int limit) {
         List<Map<String, Object>> topSites = new ArrayList<>();
         String sql = """
             SELECT url, COUNT(*) as visit_count, SUM(duration_ms) as total_ms
@@ -700,7 +700,7 @@ private final AppConfig config;
     }
 
     @PreDestroy
-    public void close() {
+    public synchronized void close() {
         try {
             if (connection != null && !connection.isClosed()) {
                 connection.close();
