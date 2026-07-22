@@ -238,9 +238,21 @@ public class TrackingEngine {
      */
     private boolean isSystemProcess(String processName, String windowTitle) {
         String combined = (processName + " " + windowTitle).toLowerCase();
+        // FIX: this list only caught window managers/compositors, not the
+        // actual background daemons showing up in real logs (Xwayland itself,
+        // GNOME's file indexer, snapd, unattended-upgrades, gvfs, etc.) - none
+        // of these are things a person "uses," they're OS plumbing that
+        // happened to spike CPU or briefly own a notification window.
         String[] systemPatterns = {
                 "gnome-shell", "kwin", "plasmashell", "xfwm4", "openbox",
-                "systemd", "dbus", "gdbus", "gjs", "trackeye"
+                "systemd", "dbus", "gdbus", "gjs", "trackeye",
+                "xwayland", "tracker-miner", "tracker-extract", "tracker-store",
+                "snapd", "snap-store", "unattended-upgr", "update-notifier",
+                "gvfsd", "gvfs-", "ibus-", "packagekit", "packagekitd",
+                "pulseaudio", "pipewire", "wireplumber", "xdg-desktop-portal",
+                "gsd-", "accounts-daemon", "upowerd", "colord", "networkmanager",
+                "polkitd", "udisksd", "at-spi-bus", "at-spi2", "evolution-alarm",
+                "gvfs", "boltd"
         };
 
         for (String pattern : systemPatterns) {
