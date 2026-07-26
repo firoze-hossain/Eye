@@ -406,58 +406,91 @@ public class BrowserTrackingService {
      * Fallback detection using known common paths
      */
     private void fallbackBrowserDetection() {
+        // FIX: this crashed the ENTIRE app on Windows, every single time.
+        // Paths.get() rejects the '*' character outright on Windows
+        // (InvalidPathException) - it's one of Windows' reserved path
+        // characters, unlike POSIX systems which don't validate it at the API
+        // level. The old code also only handled a wildcard in the FINAL path
+        // segment; Firefox's pattern has it in the MIDDLE
+        // (".../firefox/*.default/places.sqlite"), so even the one
+        // Linux-only safeguard here didn't fully strip it before calling
+        // Paths.get() - that's the exact string in the crash. Also: every
+        // single path here was Linux/Mac-only (~/.config/...) - Windows
+        // stores browser data under %LOCALAPPDATA%/%APPDATA%, a completely
+        // different convention, so this would have found nothing on Windows
+        // even once the crash was fixed.
         String userHome = System.getProperty("user.home");
+        boolean isWindows = System.getProperty("os.name", "").toLowerCase().contains("win");
 
-        // Known common paths for various browsers
         Map<String, List<String>> commonPaths = new HashMap<>();
-        commonPaths.put("Brave", Arrays.asList(
-                userHome + "/.config/BraveSoftware/Brave-Browser/Default/History",
-                userHome + "/.config/Brave-Browser/Default/History"
-        ));
-        commonPaths.put("Google Chrome", Arrays.asList(
-                userHome + "/.config/google-chrome/Default/History",
-                userHome + "/.config/chromium/Default/History"
-        ));
-        commonPaths.put("Firefox", Arrays.asList(
-                userHome + "/.mozilla/firefox/*.default/places.sqlite"
-        ));
-        commonPaths.put("Microsoft Edge", Arrays.asList(
-                userHome + "/.config/microsoft-edge/Default/History"
-        ));
-        commonPaths.put("Opera", Arrays.asList(
-                userHome + "/.config/opera/History"
-        ));
-        commonPaths.put("Vivaldi", Arrays.asList(
-                userHome + "/.config/vivaldi/Default/History"
-        ));
+
+        if (isWindows) {
+            String localAppData = System.getenv("LOCALAPPDATA");
+            String roamingAppData = System.getenv("APPDATA");
+            if (localAppData == null) localAppData = userHome + "\\AppData\\Local";
+            if (roamingAppData == null) roamingAppData = userHome + "\\AppData\\Roaming";
+
+            commonPaths.put("Brave", Arrays.asList(
+                    localAppData + "\\BraveSoftware\\Brave-Browser\\User Data\\Default\\History"
+            ));
+            commonPaths.put("Google Chrome", Arrays.asList(
+                    localAppData + "\\Google\\Chrome\\User Data\\Default\\History"
+            ));
+            commonPaths.put("Firefox", Arrays.asList(
+                    roamingAppData + "\\Mozilla\\Firefox\\Profiles\\*.default*\\places.sqlite"
+            ));
+            commonPaths.put("Microsoft Edge", Arrays.asList(
+                    localAppData + "\\Microsoft\\Edge\\User Data\\Default\\History"
+            ));
+            commonPaths.put("Opera", Arrays.asList(
+                    roamingAppData + "\\Opera Software\\Opera Stable\\History"
+            ));
+            commonPaths.put("Vivaldi", Arrays.asList(
+                    localAppData + "\\Vivaldi\\User Data\\Default\\History"
+            ));
+        } else {
+            commonPaths.put("Brave", Arrays.asList(
+                    userHome + "/.config/BraveSoftware/Brave-Browser/Default/History",
+                    userHome + "/.config/Brave-Browser/Default/History"
+            ));
+            commonPaths.put("Google Chrome", Arrays.asList(
+                    userHome + "/.config/google-chrome/Default/History",
+                    userHome + "/.config/chromium/Default/History"
+            ));
+            commonPaths.put("Firefox", Arrays.asList(
+                    userHome + "/.mozilla/firefox/*.default*/places.sqlite"
+            ));
+            commonPaths.put("Microsoft Edge", Arrays.asList(
+                    userHome + "/.config/microsoft-edge/Default/History"
+            ));
+            commonPaths.put("Opera", Arrays.asList(
+                    userHome + "/.config/opera/History"
+            ));
+            commonPaths.put("Vivaldi", Arrays.asList(
+                    userHome + "/.config/vivaldi/Default/History"
+            ));
+        }
 
         for (Map.Entry<String, List<String>> entry : commonPaths.entrySet()) {
             String browserName = entry.getKey();
             List<Path> foundPaths = new ArrayList<>();
 
             for (String pathPattern : entry.getValue()) {
-                if (pathPattern.contains("*")) {
-                    // Handle wildcards
-                    Path parentDir = Paths.get(pathPattern.substring(0, pathPattern.lastIndexOf('/')));
-                    if (Files.exists(parentDir)) {
-                        try (DirectoryStream<Path> stream = Files.newDirectoryStream(parentDir)) {
-                            for (Path dir : stream) {
-                                if (Files.isDirectory(dir)) {
-                                    Path historyFile = dir.resolve("places.sqlite");
-                                    if (Files.exists(historyFile)) {
-                                        foundPaths.add(historyFile);
-                                    }
-                                }
-                            }
-                        } catch (IOException e) {
-                            log.debug("Error scanning {}: {}", parentDir, e.getMessage());
+                try {
+                    if (pathPattern.contains("*")) {
+                        resolveWildcardPath(pathPattern, foundPaths);
+                    } else {
+                        Path path = Paths.get(pathPattern);
+                        if (Files.exists(path) && Files.isReadable(path)) {
+                            foundPaths.add(path);
                         }
                     }
-                } else {
-                    Path path = Paths.get(pathPattern);
-                    if (Files.exists(path) && Files.isReadable(path)) {
-                        foundPaths.add(path);
-                    }
+                } catch (InvalidPathException e) {
+                    // A malformed/unexpected path pattern for this OS should
+                    // never take down browser detection (let alone the whole
+                    // app, which is exactly what happened before this fix) -
+                    // just skip this one candidate path.
+                    log.debug("Skipping unusable browser path pattern '{}': {}", pathPattern, e.getMessage());
                 }
             }
 
@@ -466,6 +499,58 @@ public class BrowserTrackingService {
                         browserName, foundPaths, browserName.toLowerCase().replace(" ", "-")));
                 log.info("Found {} via fallback: {}", browserName, foundPaths);
             }
+        }
+    }
+
+//    /**
+//     * Resolves a path pattern containing exactly one wildcard SEGMENT (e.g.
+//     * ".../firefox/*.default*/places.sqlite") without ever constructing a
+//            * Path object that contains the '*' character - Windows rejects that
+//     * outright. Splits the pattern into: the parent directory (built and, SessionRepository repository
+//     * verified BEFORE any wildcard), the glob to match candidate folder names
+//     * against, and whatever comes after the wildcard (if anything).
+//            **/
+    private void resolveWildcardPath(String pathPattern, List<Path> foundPaths) {
+        String separator = pathPattern.contains("\\") ? "\\\\" : "/";
+        String[] segments = pathPattern.split(separator);
+
+        int wildcardIndex = -1;
+        for (int i = 0; i < segments.length; i++) {
+            if (segments[i].contains("*")) {
+                wildcardIndex = i;
+                break;
+            }
+        }
+        if (wildcardIndex < 0) return;
+
+        String joinChar = separator.equals("\\\\") ? "\\" : "/";
+        String parentPath = String.join(joinChar, Arrays.copyOfRange(segments, 0, wildcardIndex));
+        String glob = segments[wildcardIndex];
+        String remainder = wildcardIndex + 1 < segments.length
+                ? String.join(joinChar, Arrays.copyOfRange(segments, wildcardIndex + 1, segments.length))
+                : null;
+
+        Path parentDir;
+        try {
+            parentDir = Paths.get(parentPath);
+        } catch (InvalidPathException e) {
+            return;
+        }
+        if (!Files.exists(parentDir)) return;
+
+        try (DirectoryStream<Path> stream = Files.newDirectoryStream(parentDir, glob)) {
+            for (Path match : stream) {
+                if (remainder == null) {
+                    if (Files.isReadable(match)) foundPaths.add(match);
+                } else if (Files.isDirectory(match)) {
+                    Path candidate = match.resolve(remainder);
+                    if (Files.exists(candidate) && Files.isReadable(candidate)) {
+                        foundPaths.add(candidate);
+                    }
+                }
+            }
+        } catch (IOException e) {
+            log.debug("Error scanning {}: {}", parentDir, e.getMessage());
         }
     }
 
