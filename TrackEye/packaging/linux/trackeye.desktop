@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=TrackEye
+GenericName=Activity Tracker
+Comment=Professional Desktop Activity & Productivity Tracker
+Exec=/opt/trackeye/bin/TrackEye %U
+Icon=trackeye
+Terminal=false
+Type=Application
+Categories=Utility;Monitor;Development;
+StartupWMClass=com.roze.TrackEyeApplication
+Keywords=activity;tracker;productivity;time;monitor;roze;
